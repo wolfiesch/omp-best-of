@@ -24,9 +24,15 @@ bun install
 bun run check
 ```
 
-`bun run check` runs the type checker and the test suite, and needs no network access or credentials.
+`bun run check` runs Biome, the type checker, catalog validation, and the test suite. It
+needs no network access or credentials after dependencies are installed. Before publishing
+package changes, also run:
 
-The live path needs DeepSeek credentials, `uv`, and network access:
+```bash
+bun run smoke:package
+```
+
+The live verifier path needs credentials, `uv`, and network access:
 
 ```bash
 bun run smoke:verifier

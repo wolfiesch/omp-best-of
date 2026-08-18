@@ -4,12 +4,16 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-18
+
 ### Added
 
 - `--verifier-backend sampled` ranks candidates through seeded, cached, all-pairs judgments from an OMP model route, including subscription-authenticated models that do not expose token logprobs.
 - Benchmark scorecards distinguish sampled runtime accounting from per-token API billing and record the sampled judge's thinking level, timeout, concurrency, and schedule.
 - `--verifier-thinking` independently controls sampled-judge reasoning without changing candidate generation; cache identity and scorecard metadata include the selected level.
 - Eight hidden-contract fixtures expand coverage across bounded concurrency, circuit breaking, deterministic serialization, JSON Patch, singleflight deduplication, byte-stream chunking, stable priority queues, and ring buffers.
+- Biome formatting and lint checks, a Bun 1.3.0 and 1.3.14 CI matrix, pinned GitHub Actions, Bun Dependabot updates, and an installed-tarball CLI smoke test.
+- Integration coverage for failed-candidate exclusion, empty selected patches, binary patches, parent mutation, private artifact permissions, process-group termination, and cleanup after exceptions.
 
 ### Changed
 
@@ -17,6 +21,17 @@ All notable changes to this project are documented here. The format follows [Kee
 - Sampled judgments now prioritize semantic contract correctness over candidate-authored validation. They retain recorded tool calls and results but omit assistant reasoning and final claims. Claimed bugs must survive code-path falsification and produce a contract-valid counterexample. Rankings use pairwise-majority wins, weakest-head-to-head strength, then expected probability. This prevents validation theater, unsupported implementation claims, implementation-shape preferences, or large margins against weak candidates from overruling direct comparison evidence.
 - Reuse-rank runs rescore every stored patch against the current hidden oracle before selection, preventing stale generation-time labels after an oracle correction.
 - Candidate generation now uses OMP's native copy-on-write isolation lifecycle and baseline-aware patch capture, with OMP's Git worktree fallback retained for hosts without a native backend.
+- Result semantics now separate `selection` from `application`. Winner indexes are zero based, no-verification runs report no selection, and `application.applied` records an actual repository change.
+- `result.json` is now a versioned compact manifest with relative artifact paths. Run directories use mode `0700` and artifact files use `0600`.
+- Candidate and verifier subprocesses accept cancellation, terminate their POSIX process groups with `SIGTERM` and `SIGKILL` escalation, and settle before workspace cleanup.
+- Verifier responses are validated for bounded indexes, finite scores, complete rankings, comparison counts, criteria, and usage before selection.
+
+### Fixed
+
+- CLI options reject missing or flag-shaped values, unsafe integers, and invalid durations before candidate or verifier work starts.
+- `--help` after the `--` delimiter remains task text instead of triggering command help.
+- Parent checkout mutation during generation stops selection even when patch application was not requested.
+- Empty selected patches no longer report a successful application.
 
 ## [0.1.1] - 2026-08-18
 
@@ -53,5 +68,6 @@ Initial release.
 - Progress widget in the TUI and a stderr progress line for the standalone CLI.
 - Marketplace catalog for `omp plugin marketplace add`.
 
+[0.2.0]: https://github.com/wolfiesch/omp-best-of/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/wolfiesch/omp-best-of/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/wolfiesch/omp-best-of/releases/tag/v0.1.0

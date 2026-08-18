@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { matchModels, type ModelSource, type RegistryModel, resolveVerifierEndpoint } from "../src/model";
+import { type ModelSource, matchModels, type RegistryModel, resolveVerifierEndpoint } from "../src/model";
 
 /**
  * The catalog ships `deepseek-v4-flash` under multiple providers. DeepSeek's
@@ -30,25 +30,21 @@ const CATALOG: RegistryModel[] = [
 function source(credentials: Record<string, string>): ModelSource {
 	return {
 		list: async () => CATALOG,
-		apiKey: async model => credentials[model.provider],
+		apiKey: async (model) => credentials[model.provider],
 	};
 }
 
 describe("selector matching", () => {
 	test("prefers the provider-qualified entry", () => {
-		expect(matchModels(CATALOG, "venice/deepseek-v4-flash").map(model => model.provider)).toEqual(["venice"]);
+		expect(matchModels(CATALOG, "venice/deepseek-v4-flash").map((model) => model.provider)).toEqual(["venice"]);
 	});
 
 	test("returns every provider serving a bare id, in catalog order", () => {
-		expect(matchModels(CATALOG, "deepseek-v4-flash").map(model => model.provider)).toEqual([
-			"aimlapi",
-			"deepseek",
-			"venice",
-		]);
+		expect(matchModels(CATALOG, "deepseek-v4-flash").map((model) => model.provider)).toEqual(["aimlapi", "deepseek", "venice"]);
 	});
 
 	test("matches a provider-qualified id that itself contains a slash", () => {
-		expect(matchModels(CATALOG, "nous/deepseek/deepseek-v4-flash-0731").map(model => model.provider)).toEqual(["nous"]);
+		expect(matchModels(CATALOG, "nous/deepseek/deepseek-v4-flash-0731").map((model) => model.provider)).toEqual(["nous"]);
 	});
 });
 
@@ -73,10 +69,7 @@ describe("verifier endpoint resolution", () => {
 	});
 
 	test("admits a non-native endpoint for the live capability probe", async () => {
-		const endpoint = await resolveVerifierEndpoint(
-			"nous/deepseek/deepseek-v4-flash-0731",
-			source({ nous: "sk-nous" }),
-		);
+		const endpoint = await resolveVerifierEndpoint("nous/deepseek/deepseek-v4-flash-0731", source({ nous: "sk-nous" }));
 		expect(endpoint).toMatchObject({
 			provider: "nous",
 			model: "deepseek-v4-flash-0731",
@@ -97,9 +90,7 @@ describe("verifier endpoint resolution", () => {
 	});
 
 	test("names every compatible provider when no credential exists", async () => {
-		await expect(resolveVerifierEndpoint("deepseek-v4-flash", source({}))).rejects.toThrow(
-			/no credential.*deepseek, aimlapi, venice/s,
-		);
+		await expect(resolveVerifierEndpoint("deepseek-v4-flash", source({}))).rejects.toThrow(/no credential.*deepseek, aimlapi, venice/s);
 	});
 
 	test("suggests real catalog entries for an unknown selector", async () => {

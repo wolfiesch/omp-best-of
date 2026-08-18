@@ -17,7 +17,8 @@ if (catalog.metadata?.version !== manifest.version) {
 
 const entry = catalog.plugins?.[0];
 if (!entry?.name) problems.push("first plugin entry needs a name");
-if (entry?.version !== manifest.version) problems.push(`plugin entry version ${entry?.version} does not match package version ${manifest.version}`);
+if (entry?.version !== manifest.version)
+	problems.push(`plugin entry version ${entry?.version} does not match package version ${manifest.version}`);
 if (typeof entry?.source === "string") {
 	if (!entry.source.startsWith("./")) problems.push(`relative plugin source must start with "./", found "${entry.source}"`);
 } else if (!entry?.source) {
@@ -25,7 +26,7 @@ if (typeof entry?.source === "string") {
 }
 
 if (problems.length > 0) {
-	process.stderr.write(`${problems.map(problem => `- ${problem}`).join("\n")}\n`);
+	process.stderr.write(`${problems.map((problem) => `- ${problem}`).join("\n")}\n`);
 	process.exit(1);
 }
 process.stdout.write(`${catalog.name} catalog matches ${manifest.name}@${manifest.version}\n`);

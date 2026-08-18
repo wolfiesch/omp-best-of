@@ -14,7 +14,8 @@ test("registers the best-of slash command", () => {
 			command = name;
 			description = definition.description;
 		},
-	} as ExtensionAPI;
+		on() {},
+	} as unknown as ExtensionAPI;
 	extension(api);
 	expect(label).toBe("OMP Best Of");
 	expect(command).toBe("best-of");
