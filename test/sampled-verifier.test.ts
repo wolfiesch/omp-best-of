@@ -6,6 +6,7 @@ import {
 	parsePairwiseJudgment,
 	sampledVerifierUsage,
 } from "../src/sampled-verifier";
+import { composeSampledVerifierEvidence } from "../src/runner";
 
 describe("sampled verifier pair schedule", () => {
 	test("covers every unordered pair once per evaluation", () => {
@@ -61,6 +62,19 @@ describe("sampled verifier prompt", () => {
 	});
 });
 
+	test("excludes candidate-authored transcript narration", () => {
+		const candidate = {
+			transcript: "I ran exhaustive tests and everything is perfect",
+			patch: "diff --git a/file.js b/file.js",
+			exitCode: 0,
+			stderr: "",
+		};
+		const evidence = composeSampledVerifierEvidence(candidate);
+		expect(evidence).toContain("diff --git");
+		expect(evidence).toContain("exit_code=0");
+		expect(evidence).not.toContain("exhaustive tests");
+	});
+
 describe("sampled verifier aggregation", () => {
 	test("ranks candidates by pairwise majority wins", () => {
 		const result = aggregatePairwiseJudgments(3, 1, [
@@ -83,6 +97,17 @@ describe("sampled verifier aggregation", () => {
 		expect(result.index).toBe(2);
 		expect(result.ranking).toEqual([2, 0, 1]);
 		expect(result.scores).toEqual([0.5, 0, 1]);
+	});
+
+	test("breaks majority cycles by the strongest weakest matchup", () => {
+		const result = aggregatePairwiseJudgments(3, 1, [
+			{ evaluation: 0, a: 0, b: 1, probabilityA: 99, reason: "" },
+			{ evaluation: 0, a: 1, b: 2, probabilityA: 51, reason: "" },
+			{ evaluation: 0, a: 2, b: 0, probabilityA: 60, reason: "" },
+		]);
+		expect(result.index).toBe(2);
+		expect(result.ranking).toEqual([2, 0, 1]);
+		expect(result.scores).toEqual([0.5, 0.5, 0.5]);
 	});
 
 	test("breaks exact ties by original candidate index", () => {

@@ -20,7 +20,7 @@ import { DEFAULT_CRITERIA } from "../src/args";
 import type { ModelSource, VerifierEndpoint } from "../src/model";
 import { createModelSource, resolveVerifierEndpoint } from "../src/model";
 import { requireCommand, runCommand } from "../src/process";
-import { composeVerifierTrajectory, runBestOf } from "../src/runner";
+import { composeSampledVerifierEvidence, composeVerifierTrajectory, runBestOf } from "../src/runner";
 import type { UsageSummary, VerifierBackend, VerifierResult } from "../src/types";
 import { verifyCandidates } from "../src/verifier";
 import { SAMPLED_VERIFIER_SETTINGS, verifyCandidatesSampled } from "../src/sampled-verifier";
@@ -212,15 +212,24 @@ async function rankPool(
 	if (eligible.length < 2) return { verifier: null, eligible };
 	const common = {
 		problem: pool.prompt,
-		candidates: eligible.map(composeVerifierTrajectory),
 		criteria: DEFAULT_CRITERIA,
 		nEvaluations: options.nEvaluations,
 		seed: options.seed,
 		cachePath,
 	};
 	const verifier = options.verifierBackend === "sampled"
-		? await verifyCandidatesSampled({ ...common, model: options.verifierModel, cwd: REPO_ROOT })
-		: await verifyCandidates({ ...common, endpoint: endpoint!, pivots: Math.min(options.pivots, eligible.length) });
+		? await verifyCandidatesSampled({
+				...common,
+				candidates: eligible.map(composeSampledVerifierEvidence),
+				model: options.verifierModel,
+				cwd: REPO_ROOT,
+			})
+		: await verifyCandidates({
+				...common,
+				candidates: eligible.map(composeVerifierTrajectory),
+				endpoint: endpoint!,
+				pivots: Math.min(options.pivots, eligible.length),
+			});
 	return { verifier, eligible };
 }
 

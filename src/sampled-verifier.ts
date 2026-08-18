@@ -225,10 +225,19 @@ export function aggregatePairwiseJudgments(
 			return wins + (probability > 0.5 ? 1 : probability === 0.5 ? 0.5 : 0);
 		}, 0),
 	);
+	const minimumPairScores = pairTotals.map((row, candidate) =>
+		Math.min(...row.filter((_, opponent) => candidate !== opponent).map(total => total / nEvaluations)),
+	);
 	const scores = majorityWins.map(wins => wins / (candidateCount - 1));
 	const ranking = scores
 		.map((_, index) => index)
-		.sort((left, right) => scores[right] - scores[left] || expectedScores[right] - expectedScores[left] || left - right);
+		.sort(
+			(left, right) =>
+				scores[right] - scores[left] ||
+				minimumPairScores[right] - minimumPairScores[left] ||
+				expectedScores[right] - expectedScores[left] ||
+				left - right,
+		);
 	return { index: ranking[0], scores, ranking, nComparisons: comparisons.length };
 }
 

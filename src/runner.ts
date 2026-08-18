@@ -124,7 +124,7 @@ async function runCandidate(
 	};
 }
 
-/** Composes the exact text the verifier ranks. Shared with the benchmark harness so re-ranking a saved pool matches a live run. */
+/** Composes the full trajectory evidence ranked by the logprob verifier. */
 export function composeVerifierTrajectory(candidate: Pick<CandidateResult, "transcript" | "patch" | "exitCode" | "stderr">): string {
 	return [
 		candidate.transcript,
@@ -136,6 +136,17 @@ export function composeVerifierTrajectory(candidate: Pick<CandidateResult, "tran
 	]
 		.filter(Boolean)
 		.join("\n\n");
+}
+
+/** Keeps sampled judgments focused on the implementation instead of candidate-authored validation narration. */
+export function composeSampledVerifierEvidence(candidate: Pick<CandidateResult, "patch" | "exitCode" | "stderr">): string {
+	return [
+		"## Final repository patch",
+		candidate.patch || "(no repository changes)",
+		"## Process result",
+		`exit_code=${candidate.exitCode}`,
+		candidate.stderr ? `stderr:\n${candidate.stderr}` : "stderr: (empty)",
+	].join("\n\n");
 }
 
 async function applyPatch(root: string, expectedHead: string, patch: string, artifactDir: string): Promise<void> {
@@ -212,7 +223,6 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 			emit(options, { phase: "verifying", completedCandidates: options.n, totalCandidates: options.n, message: `Ranking ${eligible.length} candidates` });
 			const common = {
 				problem: options.task,
-				candidates: eligible.map(composeVerifierTrajectory),
 				criteria: options.criteria,
 				nEvaluations: options.nEvaluations,
 				seed: options.seed,
@@ -221,11 +231,17 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 			verifier = options.verifierBackend === "sampled"
 				? await verifyCandidatesSampled({
 						...common,
+						candidates: eligible.map(composeSampledVerifierEvidence),
 						model: options.verifierModel,
 						preflightUsage: sampledPreflightUsage,
 						cwd: root,
 					})
-				: await verifyCandidates({ ...common, endpoint: endpoint!, pivots: Math.min(options.pivots, eligible.length) });
+				: await verifyCandidates({
+						...common,
+						candidates: eligible.map(composeVerifierTrajectory),
+						endpoint: endpoint!,
+						pivots: Math.min(options.pivots, eligible.length),
+					});
 			winner = eligible[verifier.index];
 		} else if (options.verifierBackend === "sampled" && sampledPreflightUsage) {
 			verifier = {

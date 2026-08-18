@@ -162,9 +162,10 @@ Two verifier backends are available:
 - **`sampled`.** OMP asks the selected subscription model for a pairwise probability for
   every unordered candidate pair. Candidate orientation and call order are seeded, up to
   four comparisons run concurrently, and pairwise-majority wins determine the ranking.
-  Expected win probability breaks majority ties. Semantic contract violations are decisive;
-  validation quality is only a tie-breaker. `--evaluations` repeats the complete round robin.
-  Results are cached after every call.
+  A candidate's weakest head-to-head probability breaks majority cycles, followed by
+  expected win probability. Semantic contract violations are decisive; validation quality
+  is only a tie-breaker. `--evaluations` repeats the complete round robin. Results are cached
+  after every call.
 
 Both backends use the same three criteria:
 
@@ -178,8 +179,9 @@ In logprob mode, ranking uses the upstream probabilistic pivot tournament rather
 pairs. A cyclic ring pass gives every candidate one comparison, then leaders become pivots.
 Sampled mode deliberately uses all pairs, requiring $N(N-1)/2$ calls per evaluation.
 
-Each candidate is shown to either verifier as its rendered trajectory, final patch, and
-process result, so failures visible only in tool output still influence the score.
+The logprob verifier receives each rendered trajectory, final patch, and process result.
+Sampled judgments receive the patch and process result but omit the agent-authored transcript,
+which prevents validation narration from outweighing implementation semantics.
 
 ## Cost and latency model
 
