@@ -1,7 +1,7 @@
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { prepareTaskRepo, scoreCandidate } from "../bench/oracle";
+import { prepareTaskRepo, rescoreCandidates, scoreCandidate } from "../bench/oracle";
 import { requireCommand } from "../src/process";
 
 const taskDir = path.resolve(import.meta.dir, "../bench/tasks/interval-merge");
@@ -75,6 +75,13 @@ test("labels a partial fix as failing", async () => {
 	const patch = await patchFor([{ file: "intervals.js", content: PARTIAL }]);
 	const label = await scoreCandidate(taskDir, repoDir, patch);
 	expect(label.passed).toBe(false);
+});
+
+test("rescoring refreshes every stored patch against the current oracle", async () => {
+	const correct = await patchFor([{ file: "intervals.js", content: CORRECT }]);
+	const partial = await patchFor([{ file: "intervals.js", content: PARTIAL }]);
+	const labels = await rescoreCandidates(taskDir, [correct, partial]);
+	expect(labels.map(label => label.passed)).toEqual([true, false]);
 });
 
 test("restores visible tests so deleting them cannot buy a pass", async () => {

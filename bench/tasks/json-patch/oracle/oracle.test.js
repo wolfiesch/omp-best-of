@@ -18,11 +18,13 @@ test("applies nested operations without mutating inputs", () => {
 });
 
 test("decodes pointers and treats prototype names as data", () => {
-	const result = applyPatch({ "a/b": { "~key": 1 } }, [
+	const result = applyPatch({ "a/b": { "~key": 1 }, "~2": 3 }, [
 		{ op: "replace", path: "/a~1b/~0key", value: 2 },
+		{ op: "replace", path: "/~02", value: 4 },
 		{ op: "add", path: "/__proto__", value: { safe: true } },
 	]);
 	expect(result["a/b"]["~key"]).toBe(2);
+	expect(result["~2"]).toBe(4);
 	expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
 	expect(Object.hasOwn(result, "__proto__")).toBe(true);
 	expect(result.__proto__).toEqual({ safe: true });
@@ -41,6 +43,16 @@ test("handles array append, insertion, replacement, and removal", () => {
 test("supports root replacement and structural tests", () => {
 	expect(applyPatch({ a: 1 }, [{ op: "test", path: "", value: { a: 1 } }, { op: "replace", path: "", value: [1, 2] }])).toEqual([1, 2]);
 	expect(applyPatch(null, [{ op: "add", path: "", value: { ok: true } }])).toEqual({ ok: true });
+});
+
+test("structural tests distinguish arrays from objects", () => {
+	expect(() => applyPatch({ value: [] }, [{ op: "test", path: "/value", value: {} }])).toThrow();
+	expect(() => applyPatch({ value: {} }, [{ op: "test", path: "/value", value: [] }])).toThrow();
+});
+
+test("array test paths require canonical existing indices", () => {
+	expect(() => applyPatch({ values: [1] }, [{ op: "test", path: "/values/length", value: 1 }])).toThrow();
+	expect(() => applyPatch({ values: [1] }, [{ op: "test", path: "/values/01", value: 1 }])).toThrow();
 });
 
 test("is atomic when a later operation fails", () => {

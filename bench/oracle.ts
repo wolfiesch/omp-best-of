@@ -122,3 +122,13 @@ export async function scoreCandidate(taskDir: string, repoDir: string, patch: st
 		await rm(scoringRoot, { recursive: true, force: true });
 	}
 }
+
+/** Re-labels stored patches against the current task oracle before a reuse-rank run. */
+export async function rescoreCandidates(taskDir: string, patches: string[], visibleTests = true): Promise<OracleLabel[]> {
+	const repoDir = await prepareTaskRepo(taskDir, visibleTests);
+	try {
+		return await Promise.all(patches.map(patch => scoreCandidate(taskDir, repoDir, patch)));
+	} finally {
+		await rm(repoDir, { recursive: true, force: true });
+	}
+}

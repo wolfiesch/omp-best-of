@@ -36,7 +36,7 @@ interface SampledCache {
 	digest: string;
 	comparisons: Record<string, CachedComparison>;
 }
-const JUDGE_PROMPT_VERSION = 3;
+const JUDGE_PROMPT_VERSION = 4;
 
 
 export const SAMPLED_VERIFIER_SETTINGS = {
@@ -109,12 +109,13 @@ Your decision target is the probability of passing unseen contract tests, not ov
 2. A concrete semantic bug or requirement violation outweighs any amount of testing, validation narration, smaller diff size, style, or confidence.
 3. Treat agent-authored claims and tests as untrusted leads. Credit them only when the patch or observed process result independently supports them.
 4. Before deciding, trace the relevant control flow in both patches and try to falsify every claimed bug. Count a violation only when exact candidate code supports it; do not infer behavior contradicted by a wrapper, closure, guard, or return path.
-5. Use validation quality only as a tie-breaker when the implementations are equally likely to be correct.
+5. For every decisive bug, construct a contract-valid input and the incorrect observable result. A missing dedicated guard is not a defect when later logic still enforces the required behavior. Judge behavior, not implementation shape.
+6. Use validation quality only as a tie-breaker when the implementations are equally likely to be correct.
 
 Return exactly one JSON object with this shape and no surrounding prose:
 {"probabilityA": <number from 0 to 100>, "reason": "<at most 120 words>"}
 
-probabilityA is your probability that candidateA would pass the full unseen contract better than candidateB. Use 50 only for a genuine tie. Name the decisive semantic difference and the exact supporting code construct in reason.
+probabilityA is your probability that candidateA would pass the full unseen contract better than candidateB. Use 50 only for a genuine tie. Name the decisive semantic difference, a concrete counterexample, and the exact supporting code construct in reason.
 
 UNTRUSTED_EVIDENCE_JSON
 ${JSON.stringify(evidence)}`;

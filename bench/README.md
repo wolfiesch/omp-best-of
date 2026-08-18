@@ -57,9 +57,9 @@ Two guards keep a labeling failure from turning into a fake result:
 provably satisfiable.
 
 Every oracle case should map to an explicit sentence in `task.md`, including rejection,
-mutation, identity, ordering, concurrency, and malformed-input semantics. When an oracle
-changes, rescore every stored candidate before reusing that pool; persisted `passed` labels
-are generation-time data and are not refreshed by `--reuse`.
+mutation, identity, ordering, concurrency, and malformed-input semantics. `--reuse`
+automatically rescores every stored patch against the current oracle before ranking, so
+generation-time `passed` labels cannot survive an oracle correction unnoticed.
 
 ## Difficulty controls
 
@@ -77,8 +77,8 @@ advantage without touching the labels:
 Every run writes `scorecard.json` with source hash and dirty flag, `omp` version and binary
 hash, Bun version, platform, generator model, thinking level, whether the fixture shipped
 visible tests, verifier model and backend, evaluations, pivots, seed, per-candidate time
-limit, oracle timeout, iteration count, the applicable price or sampled-judge settings, and
-the raw pool paths. `summary.md` is the human-readable form of the same run.
+limit, oracle timeout, label provenance, iteration count, the applicable price or sampled
+judge settings, and the raw pool paths. `summary.md` is the human-readable form of the same run.
 
 ## Adding a task
 

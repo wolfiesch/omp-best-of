@@ -24,7 +24,7 @@ import { composeSampledVerifierEvidence, composeVerifierTrajectory, runBestOf } 
 import type { UsageSummary, VerifierBackend, VerifierResult } from "../src/types";
 import { verifyCandidates } from "../src/verifier";
 import { SAMPLED_VERIFIER_SETTINGS, verifyCandidatesSampled } from "../src/sampled-verifier";
-import { ORACLE_TIMEOUT_MS, prepareTaskRepo, scoreCandidate } from "./oracle";
+import { ORACLE_TIMEOUT_MS, prepareTaskRepo, rescoreCandidates, scoreCandidate } from "./oracle";
 
 const BENCH_ROOT = import.meta.dir;
 const REPO_ROOT = path.resolve(BENCH_ROOT, "..");
@@ -333,6 +333,7 @@ async function environment(mode: string, options: BenchOptions) {
 		warmupsDiscarded: 0,
 		verifierPricePerMtok: options.verifierBackend === "logprob" ? VERIFIER_PRICE_PER_MTOK : null,
 		sampledVerifierSettings: options.verifierBackend === "sampled" ? SAMPLED_VERIFIER_SETTINGS : null,
+		oracleLabels: options.reuse ? "rescored against current oracle before ranking" : "scored during generation",
 		label: options.label,
 		startedAt: new Date().toISOString(),
 	};
@@ -502,7 +503,20 @@ async function loadPools(runId: string, taskIds: string[]): Promise<TaskPool[]> 
 		.sort();
 	if (entries.length === 0) throw new Error(`No stored pools in ${poolDir}${taskIds.length > 0 ? ` for ${taskIds.join(", ")}` : ""}`);
 	const pools: TaskPool[] = [];
-	for (const entry of entries) pools.push((await Bun.file(path.join(poolDir, entry)).json()) as TaskPool);
+	for (const entry of entries) {
+		const pool = (await Bun.file(path.join(poolDir, entry)).json()) as TaskPool;
+		const labels = await rescoreCandidates(
+			path.join(TASKS_ROOT, pool.taskId),
+			pool.candidates.map(candidate => candidate.patch),
+			pool.generatedBy.visibleTests,
+		);
+		pool.candidates = pool.candidates.map((candidate, index) => ({
+			...candidate,
+			passed: labels[index].passed,
+			oracleDetail: labels[index].detail,
+		}));
+		pools.push(pool);
+	}
 	return pools;
 }
 
