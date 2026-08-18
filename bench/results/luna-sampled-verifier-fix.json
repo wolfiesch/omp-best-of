@@ -1,0 +1,72 @@
+{
+  "claimScope": "Fixed discriminating-pool selection only; not general end-to-end accuracy.",
+  "source": {
+    "sourceHash": "3861cf672384bf529c549a2a5afdf3366dbf00c8",
+    "sourceDirty": false,
+    "buildHash": "a547f8fa4457e1f96886a7ece04a27dc110f80c29b395daeb223f4a98e802a24",
+    "ompVersion": "omp/17.3.4",
+    "bunVersion": "1.3.14",
+    "platform": "linux x64"
+  },
+  "scenario": {
+    "candidatePoolsReused": true,
+    "verifierComparisonsLive": true,
+    "verifierModel": "openai-codex/gpt-5.6-luna",
+    "verifierBackend": "sampled",
+    "verifierThinking": "low",
+    "maxVerifierWorkers": 4,
+    "verifierTimeout": "2m",
+    "iterationsPerTask": 1,
+    "seeds": [0, 1, 2],
+    "candidateCountPerTask": 4,
+    "taskCount": 6,
+    "selectionCount": 18,
+    "randomPassAt1": 0.375,
+    "oraclePassAt4": 1.0,
+    "latencyClassification": "Live sequential reranking without an overall timeout; cold and warm paths were not separated."
+  },
+  "results": {
+    "correctSelections": 18,
+    "selections": 18,
+    "accuracy": 1.0,
+    "comparisons": 108,
+    "calls": 108,
+    "inputTokens": 4593564,
+    "cachedInputTokens": 1317632,
+    "uncachedInputTokens": 3275932,
+    "outputTokens": 40708,
+    "reasoningTokens": 31525,
+    "cacheHitRate": 0.28684307,
+    "reportedVerifierCostUsd": 0.73038864,
+    "meanReportedCostPerTaskUsd": 0.04057715,
+    "meanTaskWallClockSeconds": 36.7301,
+    "perSeedCorrect": { "0": "6/6", "1": "6/6", "2": "6/6" },
+    "perTaskCorrect": {
+      "async-memoize": "3/3",
+      "content-type": "3/3",
+      "event-emitter": "3/3",
+      "http-range": "3/3",
+      "interval-subtract": "3/3",
+      "query-merge": "3/3"
+    }
+  },
+  "comparisonToPreFixOneRound": {
+    "preFixSourceHash": "23d783edb609a0ab6e09c1c93da06e8a83a3029a",
+    "preFixCorrectSelections": 15,
+    "preFixSelections": 18,
+    "selectionAccuracyChangePercentagePoints": 16.6667,
+    "inputTokenChangePercent": -23.1408,
+    "reportedCostChangePercent": -25.8199,
+    "meanWallClockChangePercent": 12.5490,
+    "caveat": "Same pools, model, and seeds, but live stochastic judgments and multiple verifier changes make this a before/after validation, not a controlled single-factor ablation."
+  },
+  "runs": [
+    "2026-08-18T10-02-47-094Z",
+    "2026-08-18T10-03-59-675Z",
+    "2026-08-18T10-06-25-171Z",
+    "2026-08-18T10-07-39-800Z",
+    "2026-08-18T10-09-58-253Z",
+    "2026-08-18T10-11-32-355Z"
+  ],
+  "costNote": "Reported cost is OMP runtime accounting for subscription-routed usage, not a per-token invoice."
+}

@@ -516,6 +516,7 @@ async function main(): Promise<void> {
 	const runId = new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-");
 	const runDir = path.join(RESULTS_ROOT, runId);
 	await mkdir(runDir, { recursive: true });
+	const runEnvironment = await environment(options.reuse ? `reuse-rank from ${options.reuse}` : "live-generation", options);
 
 	// One registry for the whole run: the verifier endpoint and every candidate's
 	// credential resolve through omp once instead of per task.
@@ -554,7 +555,7 @@ async function main(): Promise<void> {
 	const scorecard = {
 		runId,
 		environment: {
-			...(await environment(options.reuse ? `reuse-rank from ${options.reuse}` : "live-generation", options)),
+			...runEnvironment,
 			// In reuse mode the generator settings belong to the stored pool, not to this invocation's flags.
 			...generatorFacts(generation),
 		},
