@@ -12,6 +12,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - Verifier results now identify their `logprob` or `sampled` backend. `--evaluations` means repeated upstream evaluations in logprob mode and complete pairwise rounds in sampled mode.
+- Sampled judgments now prioritize semantic contract correctness over candidate-authored validation, and rankings use pairwise-majority wins with expected probability only as a tie-breaker. This prevents large confidence margins against weak candidates from overruling a direct head-to-head loss.
 
 ## [0.1.1] - 2026-08-18
 

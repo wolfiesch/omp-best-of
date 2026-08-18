@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { aggregatePairwiseJudgments, buildPairSchedule, parsePairwiseJudgment, sampledVerifierUsage } from "../src/sampled-verifier";
+import {
+	aggregatePairwiseJudgments,
+	buildPairSchedule,
+	buildPairwisePrompt,
+	parsePairwiseJudgment,
+	sampledVerifierUsage,
+} from "../src/sampled-verifier";
 
 describe("sampled verifier pair schedule", () => {
 	test("covers every unordered pair once per evaluation", () => {
@@ -35,8 +41,28 @@ describe("sampled verifier response parsing", () => {
 	});
 });
 
+describe("sampled verifier prompt", () => {
+	test("makes semantic correctness lexicographically decisive", () => {
+		const prompt = buildPairwisePrompt(
+			{
+				problem: "Fix the parser",
+				candidates: ["patch A", "patch B"],
+				criteria: { Correctness: "Satisfies the contract" },
+				model: "test/model",
+				nEvaluations: 1,
+				seed: 0,
+				cachePath: "",
+			},
+			{ evaluation: 0, a: 0, b: 1 },
+		);
+		expect(prompt).toContain("A concrete semantic bug or requirement violation outweighs");
+		expect(prompt).toContain("validation quality only as a tie-breaker");
+		expect(prompt).toContain("probability of passing unseen contract tests");
+	});
+});
+
 describe("sampled verifier aggregation", () => {
-	test("ranks candidates by mean expected pairwise wins", () => {
+	test("ranks candidates by pairwise majority wins", () => {
 		const result = aggregatePairwiseJudgments(3, 1, [
 			{ evaluation: 0, a: 0, b: 1, probabilityA: 90, reason: "" },
 			{ evaluation: 0, a: 0, b: 2, probabilityA: 80, reason: "" },
@@ -44,10 +70,19 @@ describe("sampled verifier aggregation", () => {
 		]);
 		expect(result.index).toBe(0);
 		expect(result.ranking).toEqual([0, 1, 2]);
-		expect(result.scores[0]).toBeCloseTo(0.85);
-		expect(result.scores[1]).toBeCloseTo(0.35);
-		expect(result.scores[2]).toBeCloseTo(0.3);
+		expect(result.scores).toEqual([1, 0.5, 0]);
 		expect(result.nComparisons).toBe(3);
+	});
+
+	test("selects a Condorcet winner over larger confidence margins", () => {
+		const result = aggregatePairwiseJudgments(3, 1, [
+			{ evaluation: 0, a: 0, b: 1, probabilityA: 99, reason: "" },
+			{ evaluation: 0, a: 2, b: 0, probabilityA: 51, reason: "" },
+			{ evaluation: 0, a: 2, b: 1, probabilityA: 51, reason: "" },
+		]);
+		expect(result.index).toBe(2);
+		expect(result.ranking).toEqual([2, 0, 1]);
+		expect(result.scores).toEqual([0.5, 0, 1]);
 	});
 
 	test("breaks exact ties by original candidate index", () => {

@@ -161,8 +161,10 @@ Two verifier backends are available:
   compatible scoring endpoint.
 - **`sampled`.** OMP asks the selected subscription model for a pairwise probability for
   every unordered candidate pair. Candidate orientation and call order are seeded, up to
-  four comparisons run concurrently, and expected pairwise wins determine the ranking.
-  `--evaluations` repeats the complete round robin. Results are cached after every call.
+  four comparisons run concurrently, and pairwise-majority wins determine the ranking.
+  Expected win probability breaks majority ties. Semantic contract violations are decisive;
+  validation quality is only a tie-breaker. `--evaluations` repeats the complete round robin.
+  Results are cached after every call.
 
 Both backends use the same three criteria:
 
