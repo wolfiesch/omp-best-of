@@ -51,6 +51,7 @@ Options:
   --seed <n>               Tournament seed (default: 0)
   --label <text>           Free-form label stored in the scorecard
   --reuse <run-id>         Re-rank the stored pool of an earlier run, no generation
+  --generate-only          Build and store pools without ranking them, no verifier cost
   --help                   Show this help
 `;
 
@@ -67,6 +68,7 @@ interface BenchOptions {
 	seed: number;
 	label: string;
 	reuse: string;
+	generateOnly: boolean;
 }
 
 interface PoolCandidate {
@@ -127,6 +129,7 @@ function parseArgs(argv: string[]): BenchOptions {
 		seed: 0,
 		label: "",
 		reuse: "",
+		generateOnly: false,
 	};
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -166,6 +169,9 @@ function parseArgs(argv: string[]): BenchOptions {
 				break;
 			case "--reuse":
 				options.reuse = argv[++index] ?? "";
+				break;
+			case "--generate-only":
+				options.generateOnly = true;
 				break;
 			default:
 				throw new Error(`Unknown option: ${arg}\n\n${HELP}`);
@@ -405,6 +411,7 @@ async function generate(
 			maxTime: options.maxTime,
 			thinking: options.thinking,
 			apply: false,
+			verify: !options.generateOnly,
 			seed: options.seed,
 			criteria: DEFAULT_CRITERIA,
 			modelSource,

@@ -158,6 +158,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 	if (options.n < 2 || options.n > 8) throw new Error("Candidate count must be between 2 and 8");
 	if (options.nEvaluations < 1) throw new Error("Verifier evaluations must be at least 1");
 	if (options.pivots < 1 || options.pivots > options.n) throw new Error("Pivots must be between 1 and N");
+	if (options.apply && !options.verify) throw new Error("A patch cannot be applied without verification because nothing selected it");
 	const started = Date.now();
 	const id = runId();
 	const artifacts = artifactRoot(id);
@@ -166,8 +167,11 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 	const { root, head } = await assertCleanRepo(options.cwd);
 	// Resolve the verifier's endpoint and credential before generation starts, so
 	// a misconfigured verifier fails before any candidate spends money.
-	emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Resolving verifier endpoint" });
-	const endpoint = await resolveVerifierEndpoint(options.verifierModel, options.modelSource);
+	let endpoint = null;
+	if (options.verify) {
+		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Resolving verifier endpoint" });
+		endpoint = await resolveVerifierEndpoint(options.verifierModel, options.modelSource);
+	}
 	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-"));
 	const worktrees = Array.from({ length: options.n }, (_, index) => path.join(temporaryRoot, `candidate-${index + 1}`));
 
@@ -193,7 +197,11 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 
 		let verifier = null;
 		let winner = eligible[0];
-		if (eligible.length > 1) {
+		if (!options.verify) {
+			// Pool collection: candidates and artifacts are kept, but nothing ranks them, so
+			// the reported winner is only the first eligible candidate.
+			emit(options, { phase: "verifying", completedCandidates: options.n, totalCandidates: options.n, message: "Skipping verification" });
+		} else if (endpoint && eligible.length > 1) {
 			emit(options, { phase: "verifying", completedCandidates: options.n, totalCandidates: options.n, message: `Ranking ${eligible.length} candidates` });
 			verifier = await verifyCandidates({
 				problem: options.task,

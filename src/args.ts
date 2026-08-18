@@ -8,6 +8,7 @@ export interface BestOfCliOptions {
 	maxTime: string;
 	thinking: string;
 	apply: boolean;
+	verify: boolean;
 	seed: number;
 }
 
@@ -34,6 +35,7 @@ Options:
   --seed <n>                Tournament seed (default: 0)
   --apply                   Apply the selected patch to the clean parent checkout
   --select-only             Rank and retain artifacts without applying (default)
+  --no-verify               Generate and retain candidates without ranking them
   --help                    Show this help
 `;
 
@@ -90,6 +92,7 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 		maxTime: "20m",
 		thinking: "",
 		apply: false,
+		verify: true,
 		seed: 0,
 	};
 	const task: string[] = [];
@@ -112,6 +115,9 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 				break;
 			case "--select-only":
 				options.apply = false;
+				break;
+			case "--no-verify":
+				options.verify = false;
 				break;
 			case "--n":
 				options.n = integer(args[++index], arg);
