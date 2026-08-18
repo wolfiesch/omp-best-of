@@ -1,5 +1,7 @@
 {
-  "claimScope": "Fixed discriminating-pool selection only; not general end-to-end accuracy.",
+  "status": "superseded",
+  "claimScope": "Diagnostic only. Excluded because identity was captured after execution and the content-type oracle omitted an explicit control-character contract.",
+  "supersededBy": "A clean five-task rerank excluding content-type, whose saved pool has no fully compliant candidate under the corrected oracle.",
   "source": {
     "sourceHash": "3861cf672384bf529c549a2a5afdf3366dbf00c8",
     "sourceDirty": false,

@@ -276,30 +276,18 @@ excluded because its scorecards captured the PATH OMP binary rather than the ove
 binary actually used for judgments; commit `23d783e` corrected that metadata before this
 sweep.
 
-## Sampled verifier repair
+## Superseded sampled-verifier diagnostic
 
-The repair targeted two risks observed in the failed judgments:
-candidate-authored validation narration could outweigh patch semantics, and expected-probability
-aggregation could reward large margins against weak candidates despite a direct loss. The repaired
-selector gives each unordered pair a semantic-first judgment using only the patch and process
-result. Pairwise-majority wins determine the ranking; weakest head-to-head probability breaks
-majority cycles, followed by expected probability.
+An initial repair changed sampled judgments to use patch and process evidence instead of
+candidate-authored validation narration. It also changed aggregation to pairwise-majority wins,
+with weakest head-to-head probability and then expected probability as tie-breakers.
 
-The final clean-source sweep reused the same six discriminating tasks, four-candidate pools,
-model, and seeds:
+The first six-task sweep reported 18/18 oracle-labeled selections, but it is excluded from claims:
+benchmark identity was captured after execution. A repeat after fixing identity capture selected
+16/18 oracle-labeled winners and exposed a separate fixture defect. The `content-type` oracle did
+not test its explicit control-character requirement. Rescoring all four saved candidates against
+the corrected oracle produced four failures; the pool therefore has no valid oracle pass@4 and
+cannot measure selection accuracy.
 
-| Selections | Verifier-selected | Comparisons | Input tokens | Reported verifier cost | Mean task wall clock |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 18 | **100.0%** | 108 | 4.59M | $0.7304 | 36.7s |
-
-Every task selected a passing candidate in all three seeds. Relative to the pre-fix one-round
-sweep, the observed selection rate increased from 15/18 to 18/18, input tokens fell 23.1%, and
-reported cost fell 25.8%. Observed mixed-path mean wall clock increased 12.5%; cold and warm paths
-were not separated. This is a same-bank before/after validation, not a single-factor ablation:
-live judgments are stochastic and the repair changed both judge evidence and cycle tie-breaking.
-
-All six runs used the clean source hash recorded in the aggregate, the same OMP binary hash and
-runtime environment recorded above, one live round, and no reused verifier cache. Candidate
-generation remained reused. Machine-readable aggregate:
-`bench/results/luna-sampled-verifier-fix.json`. Raw scorecards are under the six run directories
-named in that aggregate.
+The superseded aggregate remains at `bench/results/luna-sampled-verifier-fix.json` for diagnosis.
+It does not support a verifier-accuracy or latency claim.
