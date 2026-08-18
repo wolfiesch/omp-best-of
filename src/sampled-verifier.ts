@@ -5,6 +5,13 @@ import { runCommand } from "./process";
 import { parseJsonTranscript } from "./transcript";
 import type { UsageSummary, VerifierResult, VerifierUsage } from "./types";
 
+export interface SampledVerifierProgress {
+	stage: "audit" | "comparison";
+	completed: number;
+	total: number;
+	usage: VerifierUsage;
+}
+
 export interface SampledVerifierInput {
 	problem: string;
 	candidates: string[];
@@ -20,6 +27,7 @@ export interface SampledVerifierInput {
 	candidateCwds?: Array<string | null>;
 	ompBin?: string;
 	signal?: AbortSignal;
+	onProgress?: (event: SampledVerifierProgress) => void;
 }
 
 export interface PairComparison {
@@ -464,6 +472,18 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 	const schedule = buildPairSchedule(input.candidates.length, input.nEvaluations, input.seed);
 	const cache = await loadCache(input);
 	const usage = sampledVerifierUsage(input.preflightUsage ? [input.preflightUsage] : []);
+	const auditTotal = CANDIDATE_AUDIT_ROUNDS * input.candidates.length;
+	const comparisonTotal = schedule.length;
+	const emitProgress = (stage: SampledVerifierProgress["stage"], completed: number, total: number): void => {
+		input.onProgress?.({ stage, completed, total, usage: { ...usage } });
+	};
+	let completedAudits = 0;
+	for (let round = 0; round < CANDIDATE_AUDIT_ROUNDS; round += 1) {
+		for (let index = 0; index < input.candidates.length; index += 1) {
+			if (cache.audits[auditCacheKey(round, index)]) completedAudits += 1;
+		}
+	}
+	emitProgress("audit", completedAudits, auditTotal);
 	let save = Promise.resolve();
 	const persist = async () => {
 		save = save.then(() => writePrivateFile(input.cachePath, `${JSON.stringify(cache, null, 2)}\n`));
@@ -489,8 +509,10 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 					if (priorAudits.some((audit) => !audit)) throw new Error("Sampled verifier prior audit cache is incomplete");
 					const audit = await auditCandidate(workerInput, index, priorAudits);
 					cache.audits[auditCacheKey(round, index)] = { index, round, ...audit };
-					addUsage(usage, audit.usage);
 					await persist();
+					addUsage(usage, audit.usage);
+					completedAudits += 1;
+					emitProgress("audit", completedAudits, auditTotal);
 				} catch (error) {
 					firstError ??= error;
 					controller.abort(error);
@@ -511,6 +533,8 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 
 	const auditedInput = { ...workerInput, audits };
 	const missing = schedule.filter((pair) => !cache.comparisons[cacheKey(pair)]);
+	let completedComparisons = comparisonTotal - missing.length;
+	emitProgress("comparison", completedComparisons, comparisonTotal);
 	let next = 0;
 	firstError = undefined;
 	const worker = async () => {
@@ -521,8 +545,10 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 			try {
 				const judgment = await judgePair(auditedInput, pair);
 				cache.comparisons[cacheKey(pair)] = { ...pair, ...judgment };
-				addUsage(usage, judgment.usage);
 				await persist();
+				addUsage(usage, judgment.usage);
+				completedComparisons += 1;
+				emitProgress("comparison", completedComparisons, comparisonTotal);
 			} catch (error) {
 				firstError ??= error;
 				controller.abort(error);

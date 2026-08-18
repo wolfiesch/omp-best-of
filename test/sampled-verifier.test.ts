@@ -16,6 +16,44 @@ import {
 	verifyCandidatesSampled,
 } from "../src/sampled-verifier";
 
+async function createProgressMock(root: string): Promise<string> {
+	const omp = path.join(root, "progress-mock-omp.ts");
+	await Bun.write(
+		omp,
+		`#!/usr/bin/env bun
+const prompt = process.argv.at(-1) ?? "";
+const audit = prompt.includes("Audit one candidate independently");
+const response = audit
+	? JSON.stringify({ probabilityPass: 90, findings: [], summary: "checked" })
+	: JSON.stringify({ probabilityA: 50, reason: "tie" });
+console.log(JSON.stringify({
+	type: "message_end",
+	message: {
+		role: "assistant",
+		content: [{ type: "text", text: response }],
+		usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } },
+	},
+}));
+`,
+	);
+	await chmod(omp, 0o755);
+	return omp;
+}
+
+function progressInput(root: string, omp: string, cachePath: string) {
+	return {
+		problem: "Choose",
+		candidates: Array.from({ length: 5 }, (_, index) => `candidate-${index}`),
+		criteria: { Correctness: "Works" },
+		model: "test/model",
+		nEvaluations: 1,
+		seed: 0,
+		cachePath,
+		cwd: root,
+		ompBin: omp,
+	};
+}
+
 describe("sampled verifier pair schedule", () => {
 	test("covers every unordered pair once per evaluation", () => {
 		const schedule = buildPairSchedule(4, 2, 7);
@@ -217,6 +255,57 @@ console.log(JSON.stringify({
 				ompBin: omp,
 			}),
 		).rejects.toThrow("required 1 executable probe");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("reports ordered, monotonic progress through concurrent uncached verifier work", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-progress-test-"));
+	try {
+		const omp = await createProgressMock(root);
+		const events: Array<{ stage: "audit" | "comparison"; completed: number; total: number; usage: { calls: number } }> = [];
+		const result = await verifyCandidatesSampled({
+			...progressInput(root, omp, path.join(root, "cache.json")),
+			onProgress: (event) => {
+				events.push({ ...event, usage: { ...event.usage } });
+				event.usage.calls = -1;
+			},
+		});
+		expect(events.map((event) => event.stage)).toEqual([
+			...Array.from({ length: 11 }, (): "audit" => "audit"),
+			...Array.from({ length: 11 }, (): "comparison" => "comparison"),
+		]);
+		expect(events.slice(0, 11).map((event) => event.completed)).toEqual(Array.from({ length: 11 }, (_, index) => index));
+		expect(events.slice(11).map((event) => event.completed)).toEqual(Array.from({ length: 11 }, (_, index) => index));
+		expect(events.every((event) => event.total === 10 && event.completed >= 0 && event.completed <= event.total)).toBe(true);
+		expect(result.usage.calls).toBe(20);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("reports cached audit and comparison work as initially complete when resuming", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-progress-cache-test-"));
+	try {
+		const omp = await createProgressMock(root);
+		const cachePath = path.join(root, "cache.json");
+		await verifyCandidatesSampled(progressInput(root, omp, cachePath));
+		const cache = JSON.parse(await Bun.file(cachePath).text()) as {
+			audits: Record<string, unknown>;
+			comparisons: Record<string, unknown>;
+		};
+		for (const key of Object.keys(cache.audits).slice(0, 3)) delete cache.audits[key];
+		for (const key of Object.keys(cache.comparisons).slice(0, 4)) delete cache.comparisons[key];
+		await Bun.write(cachePath, `${JSON.stringify(cache)}\n`);
+
+		const events: Array<{ stage: "audit" | "comparison"; completed: number; total: number }> = [];
+		await verifyCandidatesSampled({
+			...progressInput(root, omp, cachePath),
+			onProgress: (event) => events.push({ stage: event.stage, completed: event.completed, total: event.total }),
+		});
+		expect(events[0]).toEqual({ stage: "audit", completed: 7, total: 10 });
+		expect(events.find((event) => event.stage === "comparison")).toEqual({ stage: "comparison", completed: 6, total: 10 });
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

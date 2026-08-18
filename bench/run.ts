@@ -24,6 +24,7 @@ import { composeSampledVerifierEvidence, composeVerifierTrajectory, runBestOf } 
 import type { UsageSummary, VerifierBackend, VerifierResult } from "../src/types";
 import { verifyCandidates } from "../src/verifier";
 import { SAMPLED_VERIFIER_SETTINGS, verifyCandidatesSampled } from "../src/sampled-verifier";
+import { buildBenchmarkManifest, normalizeRepositoryPath, writeBenchmarkManifest } from "./manifest";
 import { ORACLE_TIMEOUT_MS, prepareTaskRepo, rescoreCandidates, scoreCandidate } from "./oracle";
 
 const BENCH_ROOT = import.meta.dir;
@@ -350,6 +351,7 @@ async function environment(mode: string, options: BenchOptions) {
 		mode,
 		sourceHash,
 		sourceDirty: dirty,
+		ompBinaryPath: normalizeRepositoryPath(ompPath || ompCommand, REPO_ROOT),
 		builtHash: ompBinaryHash,
 		buildMode: "local",
 		ompVersion,
@@ -455,7 +457,7 @@ function markdown(scorecard: Record<string, unknown>, outcomes: TaskOutcome[], s
 			? `Mean re-ranking wall clock ${(summary.latency.taskWallClockMsMean / 1000).toFixed(1)}s per task, slowest ${(summary.latency.taskWallClockMsMax / 1000).toFixed(1)}s. Generation latency is not re-measured.`
 			: `Mean task wall clock ${(summary.latency.taskWallClockMsMean / 1000).toFixed(1)}s, slowest ${(summary.latency.taskWallClockMsMax / 1000).toFixed(1)}s. Candidates run concurrently within a task; tasks run sequentially.`,
 		"",
-		`Raw pools: \`bench/results/${scorecard.runId}/pool/\`. Scorecard: \`bench/results/${scorecard.runId}/scorecard.json\`.`,
+		`Manifest: \`bench/results/${scorecard.runId}/manifest.json\`. Raw pools: \`bench/results/${scorecard.runId}/pool/\`. Scorecard: \`bench/results/${scorecard.runId}/scorecard.json\`.`,
 		"",
 	];
 	return lines.join("\n");
@@ -561,6 +563,22 @@ async function loadPools(runId: string, taskIds: string[]): Promise<TaskPool[]> 
 	return pools;
 }
 
+async function selectedTaskIds(options: BenchOptions): Promise<string[]> {
+	if (!options.reuse) {
+		if (options.tasks.length > 0) return [...options.tasks];
+		return (await readdir(TASKS_ROOT, { withFileTypes: true }))
+			.filter(entry => entry.isDirectory())
+			.map(entry => entry.name)
+			.sort();
+	}
+	const poolDir = path.join(RESULTS_ROOT, options.reuse, "pool");
+	return (await readdir(poolDir))
+		.filter(entry => entry.endsWith(".json"))
+		.map(entry => path.basename(entry, ".json"))
+		.filter(taskId => options.tasks.length === 0 || options.tasks.includes(taskId))
+		.sort();
+}
+
 async function main(): Promise<void> {
 	const argv = process.argv.slice(2);
 	if (argv.includes("--help")) {
@@ -572,73 +590,100 @@ async function main(): Promise<void> {
 	const runDir = path.join(RESULTS_ROOT, runId);
 	await mkdir(runDir, { recursive: true });
 	const runEnvironment = await environment(options.reuse ? `reuse-rank from ${options.reuse}` : "live-generation", options);
-
-	// One registry for the whole run: the verifier endpoint and every candidate's
-	// credential resolve through omp once instead of per task.
-	const modelSource = await createModelSource();
-	const outcomes: TaskOutcome[] = [];
-	let generation: TaskPool["generatedBy"][] = [];
-	try {
-		let endpoint: VerifierEndpoint | null = null;
-		if (!options.generateOnly && options.verifierBackend === "logprob") {
-			endpoint = await resolveVerifierEndpoint(options.verifierModel, modelSource);
-		}
-		if (options.reuse) {
-			const pools = await loadPools(options.reuse, options.tasks);
-			generation = pools.map(pool => pool.generatedBy);
-			for (const pool of pools) {
-				const started = Date.now();
-				const { verifier, eligible } = await rankPool(pool, options, path.join(runDir, `verifier-cache-${pool.taskId}.json`), endpoint);
-				outcomes.push(summarize(pool, eligible, verifier, Date.now() - started, true));
-				await mkdir(path.join(runDir, "pool"), { recursive: true });
-				await Bun.write(path.join(runDir, "pool", `${pool.taskId}.json`), `${JSON.stringify(pool, null, 2)}\n`);
-				process.stderr.write(`${pool.taskId} re-ranked from ${options.reuse}\n`);
-			}
-		} else {
-			const taskIds = options.tasks.length > 0 ? options.tasks : (await readdir(TASKS_ROOT, { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
-			for (const taskId of taskIds) {
-				const { pool, wallClockMs, verifier, eligible } = await generate(taskId, options, runDir, modelSource);
-				generation.push(pool.generatedBy);
-				outcomes.push(summarize(pool, eligible, verifier, wallClockMs, !options.generateOnly));
-			}
-		}
-	} finally {
-		modelSource.close?.();
-	}
-
-	const summary = aggregate(outcomes);
-	const scorecard = {
+	const taskIds = await selectedTaskIds(options);
+	const manifestPath = path.join(runDir, "manifest.json");
+	const manifest = buildBenchmarkManifest({
 		runId,
-		environment: {
-			...runEnvironment,
-			// In reuse mode the generator settings belong to the stored pool, not to this invocation's flags.
-			...generatorFacts(generation),
+		repositoryRoot: REPO_ROOT,
+		source: { sha: runEnvironment.sourceHash, dirty: runEnvironment.sourceDirty },
+		omp: {
+			resolvedPath: runEnvironment.ompBinaryPath,
+			sha256: runEnvironment.builtHash,
+			version: runEnvironment.ompVersion,
 		},
-		summary,
-		tasks: outcomes.map(({ verifier, ...rest }) => ({
-			...rest,
-			verifier: verifier
-				? {
-						backend: verifier.backend,
-						index: verifier.index,
-						scores: verifier.scores,
-						ranking: verifier.ranking,
-						nComparisons: verifier.nComparisons,
-						criteria: verifier.criteria,
-						usage: verifier.usage,
-					}
-				: null,
-		})),
-		artifacts: {
-			scorecard: `bench/results/${runId}/scorecard.json`,
-			summary: `bench/results/${runId}/summary.md`,
-			pools: `bench/results/${runId}/pool/`,
-		},
-	};
-	await Bun.write(path.join(runDir, "scorecard.json"), `${JSON.stringify(scorecard, null, 2)}\n`);
-	const report = markdown(scorecard, outcomes, summary);
-	await Bun.write(path.join(runDir, "summary.md"), report);
-	process.stdout.write(`${report}\n`);
+		runtime: { bunVersion: runEnvironment.bunVersion, platform: runEnvironment.platform },
+		parsedOptions: options as unknown as Record<string, unknown>,
+		taskIds,
+		mode: runEnvironment.mode,
+		reuseRunId: options.reuse,
+		intendedArtifactRoot: runDir,
+		argv,
+		startedAt: runEnvironment.startedAt,
+	});
+	await writeBenchmarkManifest(manifestPath, manifest);
+
+	try {
+		// One registry for the whole run: the verifier endpoint and every candidate's
+		// credential resolve through omp once instead of per task.
+		const modelSource = await createModelSource();
+		const outcomes: TaskOutcome[] = [];
+		let generation: TaskPool["generatedBy"][] = [];
+		try {
+			let endpoint: VerifierEndpoint | null = null;
+			if (!options.generateOnly && options.verifierBackend === "logprob") {
+				endpoint = await resolveVerifierEndpoint(options.verifierModel, modelSource);
+			}
+			if (options.reuse) {
+				const pools = await loadPools(options.reuse, taskIds);
+				generation = pools.map(pool => pool.generatedBy);
+				for (const pool of pools) {
+					const started = Date.now();
+					const { verifier, eligible } = await rankPool(pool, options, path.join(runDir, `verifier-cache-${pool.taskId}.json`), endpoint);
+					outcomes.push(summarize(pool, eligible, verifier, Date.now() - started, true));
+					await mkdir(path.join(runDir, "pool"), { recursive: true });
+					await Bun.write(path.join(runDir, "pool", `${pool.taskId}.json`), `${JSON.stringify(pool, null, 2)}\n`);
+					process.stderr.write(`${pool.taskId} re-ranked from ${options.reuse}\n`);
+				}
+			} else {
+				for (const taskId of taskIds) {
+					const { pool, wallClockMs, verifier, eligible } = await generate(taskId, options, runDir, modelSource);
+					generation.push(pool.generatedBy);
+					outcomes.push(summarize(pool, eligible, verifier, wallClockMs, !options.generateOnly));
+				}
+			}
+		} finally {
+			modelSource.close?.();
+		}
+
+		const summary = aggregate(outcomes);
+		const scorecard = {
+			runId,
+			environment: {
+				...runEnvironment,
+				// In reuse mode the generator settings belong to the stored pool, not to this invocation's flags.
+				...generatorFacts(generation),
+			},
+			summary,
+			tasks: outcomes.map(({ verifier, ...rest }) => ({
+				...rest,
+				verifier: verifier
+					? {
+							backend: verifier.backend,
+							index: verifier.index,
+							scores: verifier.scores,
+							ranking: verifier.ranking,
+							nComparisons: verifier.nComparisons,
+							criteria: verifier.criteria,
+							usage: verifier.usage,
+						}
+					: null,
+			})),
+			artifacts: {
+				manifest: `bench/results/${runId}/manifest.json`,
+				scorecard: `bench/results/${runId}/scorecard.json`,
+				summary: `bench/results/${runId}/summary.md`,
+				pools: `bench/results/${runId}/pool/`,
+			},
+		};
+		await Bun.write(path.join(runDir, "scorecard.json"), `${JSON.stringify(scorecard, null, 2)}\n`);
+		const report = markdown(scorecard, outcomes, summary);
+		await Bun.write(path.join(runDir, "summary.md"), report);
+		await writeBenchmarkManifest(manifestPath, { ...manifest, status: "completed", completedAt: new Date().toISOString() });
+		process.stdout.write(`${report}\n`);
+	} catch (error) {
+		await writeBenchmarkManifest(manifestPath, { ...manifest, status: "failed", completedAt: new Date().toISOString() });
+		throw error;
+	}
 }
 
 main().catch(error => {

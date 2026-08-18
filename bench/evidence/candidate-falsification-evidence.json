@@ -1,0 +1,114 @@
+{
+  "evidencePath": "bench/evidence/candidate-falsification-evidence.json",
+  "rawArtifactRoot": "bench/results/<run-id>/",
+  "rawArtifactsTracked": false,
+  "scenario": "Fixed stored candidate pools; openai-codex/gpt-5.6-luna sampled verifier; low thinking; one pairwise round; seeds 0, 1, 2; four concurrent verifier workers; two OS-sandboxed executable candidate-audit passes; warm subscription route; generation reused",
+  "machine": "Linux x64, Bun 1.3.14, omp/17.3.4",
+  "timeouts": {
+    "verifierCall": "2m",
+    "externalOverallPerJsonRun": "12m",
+    "externalOverallPerFourTaskRun": "35m"
+  },
+  "final": {
+    "sourceHash": "06eefab3726ef82d1100bec92a82a172aeddffc8",
+    "jsonPatch": {
+      "runIds": [
+        "2026-08-18T20-50-58-253Z",
+        "2026-08-18T20-53-57-632Z",
+        "2026-08-18T20-56-51-440Z"
+      ],
+      "selections": 3,
+      "correctSelections": 2,
+      "selectionAccuracy": 0.6666666666666666,
+      "verifierRuntimeAccountingUsd": 0.66334764,
+      "providerRequests": 157,
+      "inputTokens": 7930941,
+      "cachedInputTokens": 5445632,
+      "uncachedInputTokens": 2485309,
+      "outputTokens": 47811,
+      "reasoningTokens": 24067,
+      "meanWallClockSecondsPerTask": 175.3757,
+      "maxWallClockSeconds": 178.175
+    },
+    "otherFourPools": {
+      "runIds": [
+        "2026-08-18T20-50-58-258Z",
+        "2026-08-18T21-02-03-325Z",
+        "2026-08-18T21-13-07-225Z"
+      ],
+      "selections": 12,
+      "correctSelections": 11,
+      "selectionAccuracy": 0.9166666666666666,
+      "verifierRuntimeAccountingUsd": 2.5986456,
+      "providerRequests": 722,
+      "inputTokens": 33973350,
+      "cachedInputTokens": 24433920,
+      "uncachedInputTokens": 9539430,
+      "outputTokens": 168401,
+      "reasoningTokens": 74041,
+      "meanWallClockSecondsPerTask": 165.3654,
+      "maxWallClockSeconds": 181.253
+    },
+    "combined": {
+      "selections": 15,
+      "correctSelections": 13,
+      "pools": 5,
+      "seeds": 3,
+      "candidatesPerPool": 5,
+      "passingCandidates": 8,
+      "randomPassAt1": 0.32,
+      "oraclePassAt5": 1,
+      "selectionAccuracy": 0.8666666666666667,
+      "verifierRuntimeAccountingUsd": 3.26199324,
+      "providerRequests": 879,
+      "inputTokens": 41904291,
+      "cachedInputTokens": 29879552,
+      "uncachedInputTokens": 12024739,
+      "outputTokens": 216212,
+      "reasoningTokens": 98108,
+      "meanWallClockSecondsPerTask": 167.3675,
+      "maxWallClockSeconds": 181.253,
+      "cachedAudits": 150,
+      "cachedPairwiseComparisons": 150,
+      "recordedProbeResults": 504,
+      "minimumFirstPassProbeResultsPerCandidate": 1,
+      "minimumSecondPassProbeResultsPerCandidate": 3
+    }
+  },
+  "priorExecutableAuditJson": {
+    "runIds": [
+      "2026-08-18T19-29-06-123Z",
+      "2026-08-18T19-31-44-788Z",
+      "2026-08-18T19-34-00-404Z"
+    ],
+    "sourceHash": "f9f639a7cde02f9b3788d1d283f0e94eead42c55",
+    "selections": 3,
+    "correctSelections": 2,
+    "selectionAccuracy": 0.6666666666666666,
+    "verifierRuntimeAccountingUsd": 0.63619164,
+    "providerRequests": 98,
+    "inputTokens": 5192805,
+    "cachedInputTokens": 2493952,
+    "uncachedInputTokens": 2698853,
+    "outputTokens": 38785,
+    "reasoningTokens": 24966,
+    "meanWallClockSecondsPerTask": 143.0733,
+    "maxWallClockSeconds": 156.325
+  },
+  "pools": [
+    "bench/tasks/json-patch",
+    "bench/tasks/ring-buffer",
+    "bench/tasks/singleflight",
+    "bench/tasks/stable-stringify",
+    "bench/tasks/stream-chunker"
+  ],
+  "notes": [
+    "Generation was reused and excluded from runtime accounting totals.",
+    "Subscription-routed runtime accounting is not a per-token invoice.",
+    "The 150 retained audits and 150 pairwise comparisons consumed 879 provider requests; retained records do not attribute requests between tool loops and discarded audit attempts.",
+    "Runs were sequential within each sweep; the two sweeps overlapped. Selection claims are fixed-pool associations, not general benchmark accuracy or a causal ablation.",
+    "All 75 first-pass audit records contain at least one completed probe result and all 75 second-pass records contain at least three; all 504 retained probe payloads begin with an integer exit_code field.",
+    "Measured at source 06eefab, an ancestor of the current head. Raw scorecards and candidate pools stay off-repo under bench/results/<run-id>/ because stored transcripts contain absolute local paths.",
+    "The content-type and http-range fixtures are excluded from every selection-accuracy claim; their oracles were defective and no candidate passes the corrected oracles."
+  ]
+}

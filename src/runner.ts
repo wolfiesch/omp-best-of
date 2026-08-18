@@ -345,6 +345,13 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 						preflightUsage: sampledPreflightUsage,
 						cwd: root,
 						candidateCwds: eligible.map((candidate) => candidate.workspace),
+						onProgress: (progress) =>
+							emit(options, {
+								phase: "verifying",
+								completedCandidates: options.n,
+								totalCandidates: options.n,
+								message: `${progress.stage === "audit" ? "Audit" : "Comparison"} ${progress.completed}/${progress.total}`,
+							}),
 					});
 				} else {
 					if (!endpoint) throw new Error("Verifier endpoint was not resolved");

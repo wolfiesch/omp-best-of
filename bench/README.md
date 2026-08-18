@@ -82,6 +82,19 @@ advantage without touching the labels:
 
 ## Scorecard fields
 
+Every run first writes `bench/results/<run-id>/manifest.json`, before candidate generation,
+model-source setup, or verifier resolution. The manifest records its initial `started` state,
+then may record completion or failure time and status. It binds the source SHA and dirty state,
+resolved OMP binary path, hash, and version, Bun and OS identity, parsed options, ordered task
+IDs, run mode, cache policy, intended artifact root, sanitized argv, and a SHA-256 identity over
+canonical task IDs, options, and configuration. Scorecards reference this relative manifest path.
+
+The manifest records application-cache state as fresh or pool reuse, provider-cache state as
+`uncontrolled`, and generation reuse state. It does not prove a provider-global cold cache state:
+provider-side caching is outside the harness's control. External wrapper timeout is
+`unrecorded` unless the benchmark can obtain it explicitly. Absolute home paths and values named
+as credentials are redacted or normalized before persistence.
+
 Every run writes `scorecard.json` with source hash and dirty flag, `omp` version and binary
 hash, Bun version, platform, generator model, thinking level, whether the fixture shipped
 visible tests, verifier model and backend, evaluations, pivots, seed, per-candidate time

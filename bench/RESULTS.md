@@ -18,9 +18,12 @@ upstream paper, and none of this reproduces the upstream Terminal-Bench figures.
 | Tasks | `interval-merge`, `retry-transient`, `csv-quotes` |
 | Cost basis | Generation from the agent runtime's usage accounting, verification priced from DeepSeek list rates |
 
-Raw scorecards, summaries, and candidate pools stay on the machine that ran them under
-`bench/results/<run-id>/`. They are not committed because the stored transcripts contain
-absolute local paths.
+Raw run directories stay off-repo. Scorecards, summaries, verifier caches, and candidate pools
+remain only on the machine that produced them, under timestamped `bench/results/<run-id>/`
+directories that `.gitignore` excludes, because stored transcripts contain absolute local
+paths. Machine-readable aggregates from earlier waves were force-added directly under
+`bench/results/`; new sanitized, repository-relative aggregates that public documentation may
+cite live under `bench/evidence/`.
 
 ## Cost and latency
 
@@ -228,6 +231,12 @@ The subscription-backed sampled verifier was measured on the fixed six-task sele
 above. Every task has four stored candidates, at least one passing and one failing candidate,
 random pass@1 of 37.5%, and oracle pass@4 of 100%. Candidate generation was not rerun.
 
+The 83.3% and 72.2% selection accuracies below are invalidated and retained only as a cost and
+latency record. Two of the six pools, `content-type` and `http-range`, had defective oracles,
+and the corrected oracles leave no passing candidate in either pool, so the 18-selection
+denominator cannot support a selection-accuracy claim. Public documentation must not quote
+these two percentages as measured selection quality.
+
 Three seeds compared one complete pairwise round with three complete rounds. Each four-way
 round contains six live pairwise judgments:
 
@@ -260,7 +269,7 @@ do not estimate general coding-agent accuracy.
 All comparison runs used clean source
 `23d783edb609a0ab6e09c1c93da06e8a83a3029a`, OMP binary hash
 `a547f8fa4457e1f96886a7ece04a27dc110f80c29b395daeb223f4a98e802a24`,
-omp/17.3.4, Bun 1.3.14, and Linux x64 on the Hostinger VPS. The verifier was
+omp/17.3.4, Bun 1.3.14, and Linux x64 on the remote benchmark host. The verifier was
 `openai-codex/gpt-5.6-luna` at low thinking with four concurrent workers and a two-minute
 per-call timeout. The batch ran sequentially without an overall timeout; cold and warm paths
 were not separated, so latency numbers describe only this live reranking scenario. Candidate
@@ -314,7 +323,7 @@ not a single-factor ablation or a general coding-agent accuracy estimate.
 All nine runs captured identity before the first verifier call and recorded clean source
 `35f8df6495cba10c9c0c7173da83e9f0304e17c0`, OMP binary hash
 `a547f8fa4457e1f96886a7ece04a27dc110f80c29b395daeb223f4a98e802a24`,
-omp/17.3.4, Bun 1.3.14, and Linux x64 on the Hostinger VPS. Candidate pools were reused;
+omp/17.3.4, Bun 1.3.14, and Linux x64 on the remote benchmark host. Candidate pools were reused;
 all pairwise judgments were live and application-level verifier caches were empty. Reported
 cost is OMP runtime accounting for subscription-routed usage, not a per-token invoice. The
 current oracles rescored every candidate in all six source pools at clean source `35f8df6`;
@@ -416,6 +425,14 @@ and four-task sweeps overlapped. Each task records four verifier workers and a t
 per-call timeout. Declared external overall timeouts were 12 minutes for each JSON Patch run
 and 35 minutes for each four-task run. Generation was reused and not spent during ranking.
 Cold and warm paths were not separated.
+`06eefab` is an ancestor of the current head, so this sweep is historical evidence for that
+exact source rather than a measurement of the present working source. The five pools are a
+fixed, deliberately retained bank; `content-type` and `http-range` are excluded from every
+selection-accuracy claim in this document because their oracles were defective and the
+corrected oracles leave no passing candidate in either pool.
 
-Machine-readable aggregate: `bench/results/candidate-falsification-evidence.json`. Raw
-scorecards are under the six final run directories named in that aggregate.
+Machine-readable aggregate, tracked in this repository and free of local paths:
+[`bench/evidence/candidate-falsification-evidence.json`](evidence/candidate-falsification-evidence.json).
+Raw scorecards, candidate pools, and verifier caches remain off-repo under the six ignored
+`bench/results/<run-id>/` directories named in that aggregate, because stored transcripts
+contain absolute local paths.

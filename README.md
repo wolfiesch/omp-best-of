@@ -221,20 +221,28 @@ Those results belong to the upstream authors and have not been reproduced here. 
 ### Measured on this repository
 
 `bench/` pays for candidate pools once, labels every candidate with a hidden oracle, then
-compares selection methods over the same stored pools. The strongest current fixed-pool
-results are:
+compares selection methods over the same stored pools. Two measurements survive review:
 
-| Backend and setting | Verifier-selected | Random pass@1 | Oracle pass@4 | Scope |
-| --- | ---: | ---: | ---: | --- |
-| Logprob, 1 evaluation | 50.0% | 62.5% | 100% | 18 selections over two reused discriminating tasks |
-| Sampled Luna, 1 round | 83.3% | 37.5% | 100% | 18 selections over six deliberately retained discriminating tasks |
-| Sampled Luna, 3 rounds | 72.2% | 37.5% | 100% | Same six-task bank and 18 selections |
+| Backend and setting | Verifier-selected | Random pass@1 | Oracle | Scope | RESULTS section |
+| --- | ---: | ---: | ---: | --- | --- |
+| Logprob, 1 evaluation | 5/10 (50.0%) | 62.5% | pass@4 100% | 10 selections over two reused discriminating tasks | [v0.1.1 fixed-pool verifier sweep](bench/RESULTS.md#v011-fixed-pool-verifier-sweep) |
+| Sampled Luna, 1 round, source `06eefab` | 13/15 (86.7%) | 32.0% | pass@5 100% | 15 selections over five reused, deliberately discriminating pools | [Executable candidate falsification](bench/RESULTS.md#executable-candidate-falsification) |
+
+The sampled row is historical evidence for ancestor commit `06eefab`, not evidence for the
+current head; later commits have not been remeasured. Its tracked, sanitized aggregate is
+[`bench/evidence/candidate-falsification-evidence.json`](bench/evidence/candidate-falsification-evidence.json),
+while raw run directories stay off-repo.
+
+Earlier six-pool sampled headlines of 83.3% and 72.2% are withdrawn. Two of those pools,
+`content-type` and `http-range`, had defective oracles, and no candidate passes the corrected
+oracles, so no selection accuracy on this repository rests on them.
 
 These are harness measurements, not general coding-agent accuracy estimates. The task banks
-are small, reused, and intentionally discriminating. Repeated evaluation increased cost
-without improving selection on either bank. [`bench/RESULTS.md`](bench/RESULTS.md) records
-the exact source identities, models, cache state, token accounting, costs, exclusions, and
-raw artifact locations.
+are small, reused, and intentionally discriminating; `json-patch` remains the weakest pool at
+2/3. On the logprob bank, three evaluations per criterion tripled cost without improving
+selection, which is why the default stays at one.
+[`bench/RESULTS.md`](bench/RESULTS.md) records the exact source identities, models, cache
+state, token accounting, costs, exclusions, and raw artifact locations.
 
 ## Artifacts
 
@@ -288,16 +296,27 @@ end to end.
 Layout:
 
 ```text
-src/extension.ts   Oh My Pi command registration, progress widget, result reporting
-src/runner.ts      OMP isolation, candidate execution, ranking, patch application
-src/model.ts       verifier endpoint and credential resolution through omp's registry
-src/verifier.ts    JSON contract with the Python bridge
-src/transcript.ts  JSON event stream parsing and usage aggregation
-src/args.ts        flags, defaults, criteria, help text
-src/cli.ts         standalone entry point
-bench/run.ts       selection benchmark, pool storage, scorecards
-bench/oracle.ts    fixture materialization and hidden-oracle labeling
-bench/tasks/       benchmark fixtures: prompt, repo, oracle, reference solution
+src/extension.ts             Oh My Pi command registration, progress widget, result reporting
+src/runner.ts                OMP isolation, candidate execution, ranking, patch application
+src/model.ts                 verifier endpoint and credential resolution through omp's registry
+src/verifier.ts              JSON contract with the Python logprob bridge
+src/sampled-verifier.ts      sandboxed candidate audits, seeded pairwise judging, caching, progress
+src/audit-probe-extension.ts OS-sandboxed probe tool handed to the audit agent
+src/transcript.ts            JSON event stream parsing and usage aggregation
+src/process.ts               process-group command execution, timeouts, cancellation
+src/artifacts.ts             private-mode artifact directories and files
+src/types.ts                 shared option, result, progress, and usage contracts
+src/type-guards.ts           narrow runtime shape checks for parsed payloads
+src/args.ts                  flags, defaults, criteria, help text
+src/cli.ts                   standalone entry point
+scripts/validate-catalog.ts  plugin catalog and manifest validation
+scripts/smoke-package.ts     pack, install in a clean temp project, launch CLI help
+scripts/smoke-verifier.ts    live verifier round trip through omp credentials
+bench/run.ts                 selection benchmark, pool storage, scorecards
+bench/oracle.ts              fixture materialization and hidden-oracle labeling
+bench/tasks/                 benchmark fixtures: prompt, repo, oracle, reference solution
+bench/RESULTS.md             measured results, scope limits, and exclusions
+bench/evidence/              tracked sanitized benchmark aggregates
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.

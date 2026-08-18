@@ -6,6 +6,12 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 const MAX_OUTPUT_CHARS = 12_000;
 const DEFAULT_TIMEOUT_MS = 20_000;
 
+interface AuditExecution {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+}
+
 async function exists(file: string): Promise<boolean> {
 	return access(file).then(
 		() => true,
@@ -42,7 +48,10 @@ async function sandboxCommand(cwd: string, scratchDir: string, command: string[]
 				"--ro-bind",
 				cwd,
 				"/workspace",
-				"--tmpfs",
+				"--dir",
+				"/tmp",
+				"--bind",
+				scratchDir,
 				"/tmp",
 				"--proc",
 				"/proc",
@@ -93,6 +102,76 @@ async function sandboxCommand(cwd: string, scratchDir: string, command: string[]
 	throw new Error(`audit_probe has no sandbox backend for ${process.platform}`);
 }
 
+async function executeSandboxedAudit(cwd: string, command: string[], timeoutMs: number, signal?: AbortSignal): Promise<AuditExecution> {
+	if (!(await exists(cwd))) throw new Error("Candidate workspace does not exist");
+	if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("audit_probe aborted");
+
+	const scratchDir = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-audit-probe-"));
+	let processExited: Promise<number> | undefined;
+	let timer: Timer | undefined;
+	let abort: (() => void) | undefined;
+	let forceKillTimer: Timer | undefined;
+	let terminationRequested = false;
+
+	try {
+		const sandbox = await sandboxCommand(cwd, scratchDir, command);
+		if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("audit_probe aborted");
+
+		const child = Bun.spawn([sandbox.executable, ...sandbox.args], {
+			cwd,
+			env: { HOME: scratchDir, LANG: "C.UTF-8", PATH: process.env.PATH ?? "/usr/bin:/bin", TMPDIR: scratchDir },
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		processExited = child.exited;
+
+		const terminate = () => {
+			if (terminationRequested) return;
+			terminationRequested = true;
+			child.kill("SIGTERM");
+			forceKillTimer = setTimeout(() => child.kill("SIGKILL"), 1_000);
+		};
+		const timeout = new Promise<never>((_, reject) => {
+			timer = setTimeout(() => {
+				terminate();
+				reject(new Error(`audit_probe timed out after ${timeoutMs}ms`));
+			}, timeoutMs);
+		});
+		const cancellation = new Promise<never>((_, reject) => {
+			abort = () => {
+				terminate();
+				reject(signal?.reason instanceof Error ? signal.reason : new Error("audit_probe aborted"));
+			};
+			signal?.addEventListener("abort", abort, { once: true });
+			if (signal?.aborted) abort();
+		});
+		const [exitCode, stdout, stderr] = await Promise.race([
+			Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]),
+			timeout,
+			cancellation,
+		]);
+		return { exitCode, stdout, stderr };
+	} finally {
+		clearTimeout(timer);
+		if (abort) signal?.removeEventListener("abort", abort);
+		if (terminationRequested) await processExited;
+		clearTimeout(forceKillTimer);
+		await rm(scratchDir, { recursive: true, force: true });
+	}
+}
+
+export async function assertAuditSandboxSupported(cwd: string, signal?: AbortSignal): Promise<void> {
+	const result = await executeSandboxedAudit(
+		path.resolve(cwd),
+		[process.execPath, "-e", 'process.stdout.write("audit-probe-sandbox-ok\\n")'],
+		DEFAULT_TIMEOUT_MS,
+		signal,
+	);
+	if (result.exitCode !== 0 || result.stdout !== "audit-probe-sandbox-ok\n") {
+		throw new Error("audit_probe sandbox preflight failed");
+	}
+}
+
 export default function auditProbeExtension(pi: ExtensionAPI): void {
 	const { z } = pi.zod;
 	pi.registerTool({
@@ -106,43 +185,14 @@ export default function auditProbeExtension(pi: ExtensionAPI): void {
 			timeoutMs: z.number().int().min(1).max(30_000).optional(),
 		}),
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-			const cwd = path.resolve(ctx.cwd);
 			const input = params as { command: string[]; timeoutMs?: number };
-			if (!(await exists(cwd))) throw new Error("Candidate workspace does not exist");
-			const scratchDir = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-audit-probe-"));
-			const sandbox = await sandboxCommand(cwd, scratchDir, input.command);
-			const child = Bun.spawn([sandbox.executable, ...sandbox.args], {
-				cwd,
-				env: { HOME: scratchDir, LANG: "C.UTF-8", PATH: process.env.PATH ?? "/usr/bin:/bin", TMPDIR: scratchDir },
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-			const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-			let timer: ReturnType<typeof setTimeout> | undefined;
-			const abort = () => child.kill("SIGTERM");
-			signal?.addEventListener("abort", abort, { once: true });
-			try {
-				const timeout = new Promise<never>((_, reject) => {
-					timer = setTimeout(() => {
-						child.kill("SIGTERM");
-						reject(new Error(`audit_probe timed out after ${timeoutMs}ms`));
-					}, timeoutMs);
-				});
-				const [exitCode, stdout, stderr] = await Promise.race([
-					Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]),
-					timeout,
-				]);
-				const output = `exit_code=${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`.slice(0, MAX_OUTPUT_CHARS);
-				return {
-					content: [{ type: "text", text: output }],
-					details: { exitCode, command: input.command },
-					isError: exitCode !== 0,
-				};
-			} finally {
-				if (timer) clearTimeout(timer);
-				signal?.removeEventListener("abort", abort);
-				await rm(scratchDir, { recursive: true, force: true });
-			}
+			const result = await executeSandboxedAudit(path.resolve(ctx.cwd), input.command, input.timeoutMs ?? DEFAULT_TIMEOUT_MS, signal);
+			const output = `exit_code=${result.exitCode}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`.slice(0, MAX_OUTPUT_CHARS);
+			return {
+				content: [{ type: "text", text: output }],
+				details: { exitCode: result.exitCode, command: input.command },
+				isError: result.exitCode !== 0,
+			};
 		},
 	});
 }

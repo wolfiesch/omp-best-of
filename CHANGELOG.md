@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- Corrected the measured-results claims in `README.md`. The withdrawn six-pool sampled headlines of 83.3% and 72.2% are removed because the `content-type` and `http-range` oracles were defective and their corrected oracles leave no passing candidate. The public table now reports the logprob one-evaluation result of 5/10 with a 62.5% random baseline and the sampled one-round result of 13/15 with a 32.0% random baseline over five reused discriminating pools, labeled as historical evidence for ancestor source `06eefab` rather than for the current head.
+- Added the tracked, secret-free benchmark aggregate `bench/evidence/candidate-falsification-evidence.json`. `bench/RESULTS.md` now cites that repository-relative path and states that raw run directories remain off-repo under the ignored `bench/results/` root.
+
 ## [0.2.0] - 2026-08-18
 
 ### Added

@@ -208,3 +208,35 @@ test("detects parent mutation during generation and still cleans workspaces", as
 		await rm(temporaryRoot, { recursive: true, force: true });
 	}
 }, 15_000);
+
+test("forwards sampled verifier progress using the existing verification progress shape", async () => {
+	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-runner-progress-test-"));
+	const omp = path.join(temporaryRoot, "mock-omp.ts");
+	try {
+		const repo = await initializeRepository(temporaryRoot);
+		await Bun.write(omp, `#!/usr/bin/env bun\n${messageEvent}\n`);
+		await chmod(omp, 0o755);
+		const verifierProgress: Array<{ message: string; completedCandidates: number; totalCandidates: number }> = [];
+		await withRunnerEnvironment(temporaryRoot, omp, async () => {
+			await runBestOf({
+				...options(repo),
+				apply: false,
+				onProgress: (event) => {
+					if (event.phase === "verifying" && /^(Audit|Comparison) /.test(event.message)) verifierProgress.push(event);
+				},
+			});
+		});
+		expect(verifierProgress.map((event) => event.message)).toEqual([
+			"Audit 0/4",
+			"Audit 1/4",
+			"Audit 2/4",
+			"Audit 3/4",
+			"Audit 4/4",
+			"Comparison 0/1",
+			"Comparison 1/1",
+		]);
+		expect(verifierProgress.every((event) => event.completedCandidates === 2 && event.totalCandidates === 2)).toBe(true);
+	} finally {
+		await rm(temporaryRoot, { recursive: true, force: true });
+	}
+});
