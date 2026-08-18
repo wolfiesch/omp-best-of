@@ -1,5 +1,7 @@
 import type { ModelSource } from "./model";
 
+export type VerifierBackend = "logprob" | "sampled";
+
 export interface BestOfOptions {
 	cwd: string;
 	task: string;
@@ -7,6 +9,7 @@ export interface BestOfOptions {
 	/** Candidate model selector; empty inherits the caller's default model. */
 	generatorModel: string;
 	verifierModel: string;
+	verifierBackend: VerifierBackend;
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
@@ -62,9 +65,11 @@ export interface VerifierUsage {
 	output_tokens: number;
 	reasoning_tokens: number;
 	cache_hit_rate: number;
+	reported_cost_usd?: number;
 }
 
 export interface VerifierResult {
+	backend: VerifierBackend;
 	index: number;
 	scores: number[];
 	ranking: number[];

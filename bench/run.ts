@@ -21,8 +21,9 @@ import type { ModelSource, VerifierEndpoint } from "../src/model";
 import { createModelSource, resolveVerifierEndpoint } from "../src/model";
 import { requireCommand, runCommand } from "../src/process";
 import { composeVerifierTrajectory, runBestOf } from "../src/runner";
-import type { UsageSummary, VerifierResult } from "../src/types";
+import type { UsageSummary, VerifierBackend, VerifierResult } from "../src/types";
 import { verifyCandidates } from "../src/verifier";
+import { SAMPLED_VERIFIER_SETTINGS, verifyCandidatesSampled } from "../src/sampled-verifier";
 import { ORACLE_TIMEOUT_MS, prepareTaskRepo, scoreCandidate } from "./oracle";
 
 const BENCH_ROOT = import.meta.dir;
@@ -42,9 +43,10 @@ Options:
   --tasks <a,b>            Task ids to run (default: every directory in bench/tasks)
   --n <2-8>                Candidates per task (default: 4)
   --model <provider/model> Candidate model (default: nous/deepseek/deepseek-v4-flash-0731)
-  --verifier-model <model> Verifier model (default: deepseek-v4-flash)
-  --evaluations <n>        Repeated verifier evaluations per criterion (default: 1)
-  --pivots <n>             Tournament pivots (default: 2)
+  --verifier-model <model> Verifier model selector (default: deepseek/deepseek-v4-flash)
+  --verifier-backend <mode> logprob or sampled (default: logprob)
+  --evaluations <n>        Logprob repetitions or sampled pairwise rounds (default: 1)
+  --pivots <n>             Tournament pivots for the logprob backend (default: 2)
   --max-time <duration>    Per-candidate limit (default: 5m)
   --thinking <level>       Candidate thinking level, such as off or high (default: model default)
   --hide-tests             Ship the fixture without its visible tests; the oracle still decides
@@ -60,6 +62,7 @@ interface BenchOptions {
 	n: number;
 	generatorModel: string;
 	verifierModel: string;
+	verifierBackend: VerifierBackend;
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
@@ -121,6 +124,7 @@ function parseArgs(argv: string[]): BenchOptions {
 		n: 4,
 		generatorModel: "nous/deepseek/deepseek-v4-flash-0731",
 		verifierModel: "deepseek/deepseek-v4-flash",
+		verifierBackend: "logprob",
 		nEvaluations: 1,
 		pivots: 2,
 		maxTime: "5m",
@@ -146,6 +150,12 @@ function parseArgs(argv: string[]): BenchOptions {
 			case "--verifier-model":
 				options.verifierModel = argv[++index] ?? "";
 				break;
+			case "--verifier-backend": {
+				const backend = argv[++index];
+				if (backend !== "logprob" && backend !== "sampled") throw new Error("--verifier-backend must be logprob or sampled");
+				options.verifierBackend = backend;
+				break;
+			}
 			case "--evaluations":
 				options.nEvaluations = integer(argv[++index], "--evaluations");
 				break;
@@ -182,6 +192,7 @@ function parseArgs(argv: string[]): BenchOptions {
 
 function verifierUsd(verifier: VerifierResult | null): number {
 	if (!verifier) return 0;
+	if (verifier.backend === "sampled") return verifier.usage.reported_cost_usd ?? 0;
 	const { uncached_input_tokens, cached_input_tokens, output_tokens } = verifier.usage;
 	return (
 		(uncached_input_tokens * VERIFIER_PRICE_PER_MTOK.uncachedInput +
@@ -195,20 +206,21 @@ async function rankPool(
 	pool: TaskPool,
 	options: BenchOptions,
 	cachePath: string,
-	endpoint: VerifierEndpoint,
+	endpoint: VerifierEndpoint | null,
 ): Promise<{ verifier: VerifierResult | null; eligible: PoolCandidate[] }> {
 	const eligible = pool.candidates.filter(candidate => candidate.exitCode === 0);
 	if (eligible.length < 2) return { verifier: null, eligible };
-	const verifier = await verifyCandidates({
+	const common = {
 		problem: pool.prompt,
 		candidates: eligible.map(composeVerifierTrajectory),
 		criteria: DEFAULT_CRITERIA,
-		endpoint,
 		nEvaluations: options.nEvaluations,
-		pivots: Math.min(options.pivots, eligible.length),
 		seed: options.seed,
 		cachePath,
-	});
+	};
+	const verifier = options.verifierBackend === "sampled"
+		? await verifyCandidatesSampled({ ...common, model: options.verifierModel, cwd: REPO_ROOT })
+		: await verifyCandidates({ ...common, endpoint: endpoint!, pivots: Math.min(options.pivots, eligible.length) });
 	return { verifier, eligible };
 }
 
@@ -298,6 +310,7 @@ async function environment(mode: string, options: BenchOptions) {
 		platform: `${os.platform()} ${os.arch()}`,
 		generatorModel: options.generatorModel,
 		verifierModel: options.verifierModel,
+		verifierBackend: options.verifierBackend,
 		n: options.n,
 		nEvaluations: options.nEvaluations,
 		pivots: options.pivots,
@@ -308,7 +321,8 @@ async function environment(mode: string, options: BenchOptions) {
 		oracleTimeoutMs: ORACLE_TIMEOUT_MS,
 		iterationsPerTask: 1,
 		warmupsDiscarded: 0,
-		verifierPricePerMtok: VERIFIER_PRICE_PER_MTOK,
+		verifierPricePerMtok: options.verifierBackend === "logprob" ? VERIFIER_PRICE_PER_MTOK : null,
+		sampledVerifierSettings: options.verifierBackend === "sampled" ? SAMPLED_VERIFIER_SETTINGS : null,
 		label: options.label,
 		startedAt: new Date().toISOString(),
 	};
@@ -341,7 +355,7 @@ function markdown(scorecard: Record<string, unknown>, outcomes: TaskOutcome[], s
 		"",
 		`Mode: ${env.mode}. Source ${env.sourceHash.slice(0, 7)}${env.sourceDirty ? " (dirty)" : ""}, ${env.ompVersion}, Bun ${env.bunVersion}, ${env.platform}.`,
 		`Candidates per task: ${env.n}. Generator: ${env.generatorModel}, thinking ${env.candidateThinking}. Fixture ships visible tests: ${env.visibleTestsInFixture ? "yes" : "no"}.`,
-		`Verifier: ${env.verifierModel}, ${env.nEvaluations} evaluation(s), ${env.pivots} pivot(s), seed ${env.seed}. Per-candidate limit ${env.maxTimePerCandidate}.`,
+		`Verifier: ${env.verifierModel}, backend ${env.verifierBackend}, ${env.nEvaluations} ${env.verifierBackend === "sampled" ? "pairwise round(s)" : `evaluation(s), ${env.pivots} pivot(s)`}, seed ${env.seed}. Per-candidate limit ${env.maxTimePerCandidate}.`,
 		"",
 		"| Scope | Tasks | Random pass@1 | Verifier-selected | Oracle pass@N |",
 		"| --- | --- | --- | --- | --- |",
@@ -380,11 +394,13 @@ function markdown(scorecard: Record<string, unknown>, outcomes: TaskOutcome[], s
 			: unpricedGeneration
 				? `Generation over ${summary.cost.candidateRuns} candidate runs is unpriced: the ${env.generatorModel} route reported no per-token cost, so real generation spend is missing from this scorecard rather than zero.`
 				: `Generation ${usd(summary.cost.generationUsd)} over ${summary.cost.candidateRuns} candidate runs (${usd(summary.cost.perCandidateUsd)} each, reported by the agent runtime).`,
-		reuse
-			? `Verification ${usd(summary.cost.verifierCostUsd)} is the only cost this run spent, computed from provider list prices rather than an invoice.`
-			: unpricedGeneration
-				? `Verification ${usd(summary.cost.verifierCostUsd)}, computed from provider list prices rather than an invoice. No share of total is reported because generation is unpriced.`
-				: `Verification ${usd(summary.cost.verifierCostUsd)}, ${pct(summary.cost.verifierShareOfTotal)} of ${usd(summary.cost.totalUsd)} total, computed from provider list prices rather than an invoice.`,
+		env.verifierBackend === "sampled"
+			? `Sampled verification runtime accounting: ${usd(summary.cost.verifierCostUsd)}. Subscription-routed usage is not a per-token invoice.`
+			: reuse
+				? `Verification ${usd(summary.cost.verifierCostUsd)} is the only cost this run spent, computed from provider list prices rather than an invoice.`
+				: unpricedGeneration
+					? `Verification ${usd(summary.cost.verifierCostUsd)}, computed from provider list prices rather than an invoice. No share of total is reported because generation is unpriced.`
+					: `Verification ${usd(summary.cost.verifierCostUsd)}, ${pct(summary.cost.verifierShareOfTotal)} of ${usd(summary.cost.totalUsd)} total, computed from provider list prices rather than an invoice.`,
 		reuse
 			? `Mean re-ranking wall clock ${(summary.latency.taskWallClockMsMean / 1000).toFixed(1)}s per task, slowest ${(summary.latency.taskWallClockMsMax / 1000).toFixed(1)}s. Generation latency is not re-measured.`
 			: `Mean task wall clock ${(summary.latency.taskWallClockMsMean / 1000).toFixed(1)}s, slowest ${(summary.latency.taskWallClockMsMax / 1000).toFixed(1)}s. Candidates run concurrently within a task; tasks run sequentially.`,
@@ -412,6 +428,7 @@ async function generate(
 			n: options.n,
 			generatorModel: options.generatorModel,
 			verifierModel: options.verifierModel,
+			verifierBackend: options.verifierBackend,
 			nEvaluations: options.nEvaluations,
 			pivots: options.pivots,
 			maxTime: options.maxTime,
@@ -496,7 +513,10 @@ async function main(): Promise<void> {
 	const outcomes: TaskOutcome[] = [];
 	let generation: TaskPool["generatedBy"][] = [];
 	try {
-		const endpoint = await resolveVerifierEndpoint(options.verifierModel, modelSource);
+		let endpoint: VerifierEndpoint | null = null;
+		if (!options.generateOnly && options.verifierBackend === "logprob") {
+			endpoint = await resolveVerifierEndpoint(options.verifierModel, modelSource);
+		}
 		if (options.reuse) {
 			const pools = await loadPools(options.reuse, options.tasks);
 			generation = pools.map(pool => pool.generatedBy);
@@ -531,7 +551,17 @@ async function main(): Promise<void> {
 		summary,
 		tasks: outcomes.map(({ verifier, ...rest }) => ({
 			...rest,
-			verifier: verifier ? { index: verifier.index, scores: verifier.scores, ranking: verifier.ranking, nComparisons: verifier.nComparisons, usage: verifier.usage } : null,
+			verifier: verifier
+				? {
+						backend: verifier.backend,
+						index: verifier.index,
+						scores: verifier.scores,
+						ranking: verifier.ranking,
+						nComparisons: verifier.nComparisons,
+						criteria: verifier.criteria,
+						usage: verifier.usage,
+					}
+				: null,
 		})),
 		artifacts: {
 			scorecard: `bench/results/${runId}/scorecard.json`,

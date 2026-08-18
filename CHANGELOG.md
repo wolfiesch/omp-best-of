@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- `--verifier-backend sampled` ranks candidates through seeded, cached, all-pairs judgments from an OMP model route, including subscription-authenticated models that do not expose token logprobs.
+- Benchmark scorecards distinguish sampled runtime accounting from per-token API billing and record the sampled judge's thinking level, timeout, concurrency, and schedule.
+
+### Changed
+
+- Verifier results now identify their `logprob` or `sampled` backend. `--evaluations` means repeated upstream evaluations in logprob mode and complete pairwise rounds in sampled mode.
+
 ## [0.1.1] - 2026-08-18
 
 ### Changed

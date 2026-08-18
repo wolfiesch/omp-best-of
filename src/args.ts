@@ -1,8 +1,11 @@
+import type { VerifierBackend } from "./types";
+
 export interface BestOfCliOptions {
 	task: string;
 	n: number;
 	generatorModel: string;
 	verifierModel: string;
+	verifierBackend: VerifierBackend;
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
@@ -27,9 +30,10 @@ Usage:
 Options:
   --n <2-8>                 Number of isolated candidates (default: 3)
   --model <provider/model>  Candidate model (default: the calling session's model)
-  --verifier-model <model>  Verifier model from omp's catalog (default: deepseek/deepseek-v4-flash)
-  --evaluations <n>         Repeated evaluations per criterion (default: 1)
-  --pivots <n>              Probabilistic tournament pivots (default: 2)
+  --verifier-model <model>  Verifier model selector (default: deepseek/deepseek-v4-flash)
+  --verifier-backend <mode> logprob or sampled (default: logprob)
+  --evaluations <n>         Logprob repetitions or sampled pairwise rounds (default: 1)
+  --pivots <n>              Probabilistic pivots for the logprob backend (default: 2)
   --max-time <duration>     Per-candidate limit, such as 20m (default: 20m)
   --thinking <level>        Candidate thinking level (default: the calling session's level)
   --seed <n>                Tournament seed (default: 0)
@@ -87,6 +91,7 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 		n: 3,
 		generatorModel: "",
 		verifierModel: "deepseek/deepseek-v4-flash",
+		verifierBackend: "logprob",
 		nEvaluations: 1,
 		pivots: 2,
 		maxTime: "20m",
@@ -129,6 +134,12 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 			case "--verifier-model":
 				options.verifierModel = args[++index] ?? "";
 				break;
+			case "--verifier-backend": {
+				const backend = args[++index];
+				if (backend !== "logprob" && backend !== "sampled") throw new Error("--verifier-backend must be logprob or sampled");
+				options.verifierBackend = backend;
+				break;
+			}
 			case "--evaluations":
 				options.nEvaluations = integer(args[++index], arg);
 				break;

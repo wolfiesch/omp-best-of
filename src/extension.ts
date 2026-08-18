@@ -30,8 +30,10 @@ function resultLines(result: BestOfResult): string[] {
 		`Candidates: ${result.candidates.length} | elapsed: ${(result.durationMs / 1000).toFixed(1)}s`,
 		`Generation: $${candidateCost.toFixed(4)} | input ${result.candidates.reduce((sum, candidate) => sum + candidate.usage.inputTokens, 0).toLocaleString()} | output ${result.candidates.reduce((sum, candidate) => sum + candidate.usage.outputTokens, 0).toLocaleString()}`,
 		verifierUsage
-			? `Verifier: ${verifierUsage.calls} calls | input ${verifierUsage.input_tokens.toLocaleString()} (${(verifierUsage.cache_hit_rate * 100).toFixed(1)}% cached) | output ${verifierUsage.output_tokens.toLocaleString()}`
-			: "Verifier: skipped because only one candidate completed successfully",
+			? `Verifier (${result.verifier?.backend}): ${verifierUsage.calls} calls | input ${verifierUsage.input_tokens.toLocaleString()} (${(verifierUsage.cache_hit_rate * 100).toFixed(1)}% cached) | output ${verifierUsage.output_tokens.toLocaleString()}`
+			: result.verifier
+				? `Verifier (${result.verifier.backend}): no provider calls; cached comparisons reused`
+				: "Verifier: skipped",
 		`Artifacts: ${result.artifactDir}`,
 	];
 }
@@ -39,7 +41,7 @@ function resultLines(result: BestOfResult): string[] {
 export default function ompBestOfExtension(pi: ExtensionAPI): void {
 	pi.setLabel("OMP Best Of");
 	pi.registerCommand("best-of", {
-		description: "Run isolated Best-of-N coding agents and select the strongest patch with LLM-as-a-Verifier",
+		description: "Run isolated Best-of-N agents and rank patches with LLM-as-a-Verifier or an OMP sampled judge",
 		handler: async (rawArgs: string, ctx: ExtensionCommandContext) => {
 			if (!rawArgs.trim() || rawArgs.trim() === "--help") {
 				ctx.ui.notify(HELP, "info");

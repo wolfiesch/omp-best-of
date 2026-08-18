@@ -61,7 +61,7 @@ export async function verifyCandidates(input: VerifyCandidatesInput): Promise<Ve
 	const { endpoint, ...payload } = input;
 	const stdout = await runBridge(endpoint, { ...payload, model: endpoint.model });
 	try {
-		return JSON.parse(stdout) as VerifierResult;
+		return { ...(JSON.parse(stdout) as Omit<VerifierResult, "backend">), backend: "logprob" };
 	} catch {
 		throw new Error(`Verifier returned invalid JSON: ${stdout.slice(0, 500)}`);
 	}

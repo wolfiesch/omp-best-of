@@ -26,12 +26,16 @@ affordable.
 ```bash
 bun bench/run.ts --n 4 --max-time 4m                 # generate pools and rank them
 bun bench/run.ts --n 4 --generate-only               # store pools without verifier cost
-bun bench/run.ts --reuse <run-id> --evaluations 4    # re-rank stored pools, verifier cost only
+bun bench/run.ts --reuse <run-id> --evaluations 4    # re-rank with the logprob backend
+bun bench/run.ts --reuse <run-id> \
+  --verifier-backend sampled \
+  --verifier-model openai-codex/gpt-5.6-luna         # subscription-backed pairwise judge
 ```
 
-Generation cost comes from the agent runtime's own usage accounting. Verifier cost is
-computed from DeepSeek list prices in `VERIFIER_PRICE_PER_MTOK`, so it is an estimate from
-published rates rather than an invoice.
+Generation cost comes from the agent runtime's usage accounting. Logprob verifier cost is
+computed from DeepSeek list prices in `VERIFIER_PRICE_PER_MTOK`. Sampled verifier cost is
+the OMP runtime's accounting estimate for its model route; subscription-routed usage is not
+billed per token. Neither number is an invoice.
 
 ## Labels
 
@@ -67,9 +71,9 @@ advantage without touching the labels:
 
 Every run writes `scorecard.json` with source hash and dirty flag, `omp` version and binary
 hash, Bun version, platform, generator model, thinking level, whether the fixture shipped
-visible tests, verifier model, evaluations, pivots, seed, per-candidate time limit, oracle
-timeout, iteration count, the price table used, and the raw pool paths. `summary.md` is the
-human-readable form of the same run.
+visible tests, verifier model and backend, evaluations, pivots, seed, per-candidate time
+limit, oracle timeout, iteration count, the applicable price or sampled-judge settings, and
+the raw pool paths. `summary.md` is the human-readable form of the same run.
 
 ## Adding a task
 

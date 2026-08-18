@@ -12,6 +12,7 @@ describe("command arguments", () => {
 			thinking: "",
 			// Provider-qualified: eight providers ship this model id.
 			verifierModel: "deepseek/deepseek-v4-flash",
+			verifierBackend: "logprob",
 			nEvaluations: 1,
 			pivots: 2,
 			apply: false,
@@ -29,6 +30,19 @@ describe("command arguments", () => {
 		expect(parsed.nEvaluations).toBe(2);
 		expect(parsed.apply).toBe(true);
 		expect(parsed.task).toBe("fix auth refresh");
+	});
+
+	test("selects the subscription-backed sampled verifier", () => {
+		const parsed = parseArgs([
+			"--verifier-backend",
+			"sampled",
+			"--verifier-model",
+			"openai-codex/gpt-5.6-luna",
+			"task",
+		]);
+		expect(parsed.verifierBackend).toBe("sampled");
+		expect(parsed.verifierModel).toBe("openai-codex/gpt-5.6-luna");
+		expect(() => parseArgs(["--verifier-backend", "unknown", "task"])).toThrow("--verifier-backend must be logprob or sampled");
 	});
 
 	test("rejects unknown options", () => {

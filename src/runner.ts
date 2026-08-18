@@ -4,8 +4,9 @@ import path from "node:path";
 import { parseJsonTranscript } from "./transcript";
 import { resolveVerifierEndpoint } from "./model";
 import { requireCommand, runCommand } from "./process";
-import type { BestOfOptions, BestOfProgress, BestOfResult, CandidateResult } from "./types";
+import type { BestOfOptions, BestOfProgress, BestOfResult, CandidateResult, UsageSummary, VerifierResult } from "./types";
 import { assertScoringSupported, verifyCandidates } from "./verifier";
+import { assertSampledVerifierSupported, sampledVerifierUsage, verifyCandidatesSampled } from "./sampled-verifier";
 
 const DEFAULT_AGENT_PROMPT = `Work independently on the task below. Modify the repository directly, run focused validation, and finish only when the requested behavior works. Do not commit changes. Preserve unrelated user work.\n\n`;
 
@@ -165,14 +166,19 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 	await mkdir(artifacts, { recursive: true });
 	emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Checking repository" });
 	const { root, head } = await assertCleanRepo(options.cwd);
-	// Resolve the verifier's endpoint and credential before generation starts, so
-	// a misconfigured verifier fails before any candidate spends money.
+	// Prove the selected verifier transport before candidate generation spends
+	// anything. Logprob mode probes constrained scoring; sampled mode exercises
+	// one real OMP subscription judgment.
 	let endpoint = null;
-	if (options.verify) {
+	let sampledPreflightUsage: UsageSummary | undefined;
+	if (options.verify && options.verifierBackend === "logprob") {
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Resolving verifier endpoint" });
 		endpoint = await resolveVerifierEndpoint(options.verifierModel, options.modelSource);
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Probing verifier scoring capability" });
 		await assertScoringSupported(endpoint);
+	} else if (options.verify) {
+		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Probing sampled verifier" });
+		sampledPreflightUsage = await assertSampledVerifierSupported(options.verifierModel, root);
 	}
 	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-"));
 	const worktrees = Array.from({ length: options.n }, (_, index) => path.join(temporaryRoot, `candidate-${index + 1}`));
@@ -196,28 +202,42 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 		);
 		const eligible = candidates.filter(candidate => candidate.exitCode === 0);
 		if (eligible.length === 0) throw new Error(`All candidates failed. Artifacts: ${artifacts}`);
-
-		let verifier = null;
+		let verifier: VerifierResult | null = null;
 		let winner = eligible[0];
 		if (!options.verify) {
 			// Pool collection: candidates and artifacts are kept, but nothing ranks them, so
 			// the reported winner is only the first eligible candidate.
 			emit(options, { phase: "verifying", completedCandidates: options.n, totalCandidates: options.n, message: "Skipping verification" });
-		} else if (endpoint && eligible.length > 1) {
+		} else if (eligible.length > 1) {
 			emit(options, { phase: "verifying", completedCandidates: options.n, totalCandidates: options.n, message: `Ranking ${eligible.length} candidates` });
-			verifier = await verifyCandidates({
+			const common = {
 				problem: options.task,
 				candidates: eligible.map(composeVerifierTrajectory),
 				criteria: options.criteria,
-				endpoint,
 				nEvaluations: options.nEvaluations,
-				pivots: Math.min(options.pivots, eligible.length),
 				seed: options.seed,
 				cachePath: path.join(artifacts, "verifier-cache.json"),
-			});
+			};
+			verifier = options.verifierBackend === "sampled"
+				? await verifyCandidatesSampled({
+						...common,
+						model: options.verifierModel,
+						preflightUsage: sampledPreflightUsage,
+						cwd: root,
+					})
+				: await verifyCandidates({ ...common, endpoint: endpoint!, pivots: Math.min(options.pivots, eligible.length) });
 			winner = eligible[verifier.index];
+		} else if (options.verifierBackend === "sampled" && sampledPreflightUsage) {
+			verifier = {
+				backend: "sampled",
+				index: 0,
+				scores: [1],
+				ranking: [0],
+				nComparisons: 0,
+				criteria: Object.keys(options.criteria),
+				usage: sampledVerifierUsage([sampledPreflightUsage]),
+			};
 		}
-
 		if (options.apply) {
 			emit(options, { phase: "applying", completedCandidates: options.n, totalCandidates: options.n, message: `Applying candidate ${winner.index + 1}` });
 			await applyPatch(root, head, winner.patch, artifacts);

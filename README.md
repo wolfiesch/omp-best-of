@@ -3,7 +3,7 @@
 [![CI](https://github.com/wolfiesch/omp-best-of/actions/workflows/ci.yml/badge.svg)](https://github.com/wolfiesch/omp-best-of/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Run several OMP-powered isolated candidate agents on the same task in detached git worktrees, rank their complete trajectories with [LLM-as-a-Verifier](https://github.com/llm-as-a-verifier/llm-as-a-verifier), and optionally apply the selected patch.
+Run several OMP-powered isolated candidate agents on the same task in detached git worktrees, rank their complete trajectories with either [LLM-as-a-Verifier](https://github.com/llm-as-a-verifier/llm-as-a-verifier) or an OMP subscription-backed sampled judge, and optionally apply the selected patch.
 
 ```text
 /best-of --n 5 --apply Fix the failing authentication test
@@ -13,7 +13,7 @@ Run several OMP-powered isolated candidate agents on the same task in detached g
 
 Sampling several solutions raises the chance that at least one is correct, but selecting among them remains a separate problem. This plugin provides OMP orchestration, pluggable verifier selection, inspectable artifacts, and opt-in patch application. Selection quality depends on the candidates, criteria, verifier model, and endpoint.
 
-The tournament algorithm is from Kwok et al. and runs through the upstream `llm-verifier` Python package rather than a reimplementation. Its published benchmark results belong to the upstream authors; this plugin has not established equivalent reliability.
+The default logprob backend uses the tournament algorithm from Kwok et al. through the upstream `llm-verifier` Python package rather than a reimplementation. The sampled backend is a separate conventional pairwise judge, not the paper's continuous-score method. Published benchmark results belong to the upstream authors; this plugin has not established equivalent reliability.
 
 ## How it works
 
@@ -28,7 +28,7 @@ flowchart LR
     D1 --> E[Trajectory, patch, exit code, usage]
     D2 --> E
     D3 --> E
-    E --> F[Pairwise verifier tournament]
+    E --> F[Configured verifier backend]
     F --> G{--apply?}
     G -->|no| H[Artifacts only]
     G -->|yes| I[HEAD unchanged? apply winner]
@@ -38,7 +38,7 @@ flowchart LR
 2. **Fan out.** Create one detached `git worktree` per candidate at that exact commit, under a temporary directory.
 3. **Generate.** Run one headless Oh My Pi session per worktree, concurrently, in JSON event mode with extensions and sessions disabled.
 4. **Collect.** Parse each transcript, stage everything in the worktree, and capture a binary-safe patch against `HEAD`.
-5. **Rank.** Pass the eligible candidates, each as trajectory plus final patch plus process result, to `llm-verifier`.
+5. **Rank.** Use either the upstream continuous-logprob tournament or a seeded sampled pairwise round robin over the eligible trajectories.
 6. **Select.** Apply the winner only when `--apply` is given, and only when the parent `HEAD` and status are still unchanged.
 7. **Clean.** Remove every worktree and prune, whether the run succeeded or failed. Artifacts are always kept.
 
@@ -51,25 +51,32 @@ A candidate that exits non-zero, or whose patch cannot be captured, is excluded 
 | Oh My Pi 17 or newer | Provides the extension API, the `omp` binary, and credentials |
 | Bun 1.3 or newer | Runtime for the plugin and its CLI |
 | Git | Worktree isolation and patch application |
-| `uv` | Runs the pinned `llm-verifier==0.2.0` sidecar |
-| A verifier credential in omp | `omp token <provider>`; DeepSeek V4 Flash is the default and recommended low-cost option |
+| `uv` | Required only by the logprob backend; runs the pinned `llm-verifier==0.2.0` sidecar |
+| A verifier route in omp | Logprob mode needs a score-capable API endpoint; sampled mode can invoke an OMP subscription model |
 | Clean working tree | Enforced before any candidate starts |
 
 Candidates inherit the calling session's model and thinking level, so `/best-of` runs
-what you are already running; `--model` and `--thinking` override that. The verifier is
-separate and defaults to `deepseek/deepseek-v4-flash`.
+what you are already running; `--model` and `--thinking` override that. Verification is
+separate and defaults to the `logprob` backend with `deepseek/deepseek-v4-flash`.
 
-Verifier credentials come from omp's own model registry, not from a plugin-specific API
-key, so a compatible OAuth-backed provider works with no extra setup. Resolution and a
-scoring-capability preflight happen before the first candidate starts, so an incompatible
-verifier does not spend the candidate budget.
-
-Any catalog model and provider may be selected. DeepSeek V4 Flash is the default because
-it is inexpensive and its native score-tag path is known to work. Other endpoints
+The default logprob backend resolves credentials through omp's model registry. DeepSeek V4
+Flash is the default because its native score-tag path is known to work. Other endpoints
 must prove the constrained-prefill behavior required by `llm-verifier==0.2.0`; the plugin
 sends a one-token capability probe before generation and refuses endpoints that ignore or
-reject that contract. Compatible self-hosted vLLM and SGLang endpoints are therefore
-eligible rather than hard-coded by provider.
+reject that contract. Compatible self-hosted vLLM and SGLang endpoints are eligible.
+
+The sampled backend invokes the named verifier through the `omp` binary instead of a
+provider API client. This supports subscription-authenticated routes such as
+`openai-codex/gpt-5.6-luna` without API credits:
+
+```text
+/best-of --model openai-codex/gpt-5.6-luna --verifier-backend sampled \
+  --verifier-model openai-codex/gpt-5.6-luna Fix the failing test
+```
+
+Sampled mode runs one live judgment before candidate generation to prove the OMP route
+works. It does not receive token logprobs and must not be presented as a reproduction of
+LLM-as-a-Verifier's continuous scoring.
 
 ## Install
 
@@ -123,9 +130,10 @@ The standalone form writes progress to stderr and a JSON summary to stdout, so `
 | --- | --- | --- |
 | `--n <2-8>` | `3` | Number of isolated candidates |
 | `--model <provider/model>` | session model | Candidate model; every model slot in the child agent is pinned to it |
-| `--verifier-model <model>` | `deepseek/deepseek-v4-flash` | Verifier model, resolved through omp's catalog and credentials; non-native endpoints must pass the live scoring probe |
-| `--evaluations <n>` | `1` | Repeated verifier evaluations per criterion |
-| `--pivots <n>` | `2` | Pivots in the probabilistic tournament |
+| `--verifier-model <model>` | `deepseek/deepseek-v4-flash` | Verifier model selector; an API-scoring model for `logprob`, or an OMP model for `sampled` |
+| `--verifier-backend <mode>` | `logprob` | `logprob` for upstream LLM-as-a-Verifier or `sampled` for an OMP-backed pairwise judge |
+| `--evaluations <n>` | `1` | Repeated logprob evaluations or complete sampled pairwise rounds |
+| `--pivots <n>` | `2` | Pivots in the logprob tournament; ignored by sampled mode |
 | `--max-time <duration>` | `20m` | Per-candidate wall-clock limit, such as `90s`, `20m`, `2h` |
 | `--thinking <level>` | session level | Candidate thinking level, such as `off`, `low`, `high`; trades candidate quality for cost |
 | `--seed <n>` | `0` | Tournament seed |
@@ -140,16 +148,23 @@ The standalone form writes progress to stderr and a JSON summary to stdout, so `
 | --- | --- |
 | `OMP_BEST_OF_PYTHON` | Run the bridge with an existing interpreter instead of `uv`. That interpreter must already provide `llm-verifier` |
 | `OMP_BEST_OF_VERIFIER_BRIDGE` | Override the bridge script path |
-| `OMP_BEST_OF_OMP_BIN` | Override the `omp` binary used for candidates |
+| `OMP_BEST_OF_OMP_BIN` | Override the `omp` binary used for candidates and sampled judgments |
 | `PI_CODING_AGENT_DIR` | Moves the artifact root along with the Oh My Pi agent directory |
 
 ## Verification mechanics
 
-The upstream framework replaces a single discrete judge score with three scaling axes, and this plugin uses all three:
+Two verifier backends are available:
 
-- **Continuous scoring.** The score is the expectation over the distribution of score tokens rather than the argmax token, which removes the tie rates that make discrete judges unusable for ranking.
-- **Repeated evaluation.** `--evaluations` averages independent passes to cut variance.
-- **Criteria decomposition.** Instead of one compound question, three orthogonal criteria are scored and averaged:
+- **`logprob` (default).** The upstream framework computes continuous expected scores from
+  score-token distributions, repeats evaluations to reduce variance, decomposes the rubric,
+  and uses its probabilistic pivot tournament. This is the paper's method and requires a
+  compatible scoring endpoint.
+- **`sampled`.** OMP asks the selected subscription model for a pairwise probability for
+  every unordered candidate pair. Candidate orientation and call order are seeded, up to
+  four comparisons run concurrently, and expected pairwise wins determine the ranking.
+  `--evaluations` repeats the complete round robin. Results are cached after every call.
+
+Both backends use the same three criteria:
 
 | Criterion | Question |
 | --- | --- |
@@ -157,18 +172,26 @@ The upstream framework replaces a single discrete judge score with three scaling
 | Correctness | Do the implementation and observed tool outputs support that the change is correct, including important edge cases? |
 | Verification | Did the agent run relevant validation and interpret its results accurately without hiding failures? |
 
-Ranking uses the upstream probabilistic pivot tournament rather than all pairs. A cyclic ring pass gives every candidate one comparison and neutralizes position bias, then the leaders become pivots and the remaining budget is spent comparing against them. Comparison count therefore grows with `N` times pivots instead of `N` squared, which is what keeps larger candidate pools affordable.
+In logprob mode, ranking uses the upstream probabilistic pivot tournament rather than all
+pairs. A cyclic ring pass gives every candidate one comparison, then leaders become pivots.
+Sampled mode deliberately uses all pairs, requiring $N(N-1)/2$ calls per evaluation.
 
-Each candidate is shown to the verifier as its rendered trajectory, its final patch, and its process result, so failures visible only in tool output still influence the score.
+Each candidate is shown to either verifier as its rendered trajectory, final patch, and
+process result, so failures visible only in tool output still influence the score.
 
 ## Cost and latency model
 
-Total cost is `N` generation runs plus verification. Two properties matter when budgeting:
+Total work is `N` generation runs plus verification. Two properties matter when budgeting:
 
-- Verification is comparison heavy. It reads long trajectory pairs, which prefix caching absorbs well, but at default DeepSeek reasoning effort it also thinks at length, so its output tokens are not negligible. On the small fixtures in `bench/`, verification was 25 to 51 percent of run cost.
-- Candidates run concurrently, so wall-clock time is closer to the slowest candidate than to the sum of all of them.
+- Logprob verification is comparison heavy and can itself consume substantial reasoning
+  tokens. Sampled verification uses $N(N-1)/2$ subscription calls per evaluation: six calls
+  for four candidates and 28 for eight.
+- Candidates run concurrently. Sampled comparisons also run up to four at a time, so wall
+  clock is lower than the sum of call durations.
 
-Every run reports its own numbers instead of relying on estimates. The result includes per-candidate requests, input, output, cache read, cache write, reasoning tokens, and cost, plus verifier calls, input, output, reasoning tokens, and the measured cache hit rate. Use those fields for your own comparisons; they are the only cost numbers this project claims.
+Every run reports candidate and verifier token usage. Sampled-mode `reported_cost_usd` is
+OMP runtime accounting, not an incremental bill for subscription-routed usage. Subscription
+plans still impose provider usage limits.
 
 For reference, the upstream project reports the following on Terminal-Bench 2.1 with DeepSeek V4 Flash for both generation and verification:
 
