@@ -293,6 +293,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 						thinking: options.verifierThinking,
 						preflightUsage: sampledPreflightUsage,
 						cwd: root,
+						candidateCwds: eligible.map(candidate => candidate.worktree),
 					})
 				: await verifyCandidates({
 						...common,

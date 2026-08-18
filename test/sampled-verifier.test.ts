@@ -1,8 +1,12 @@
+import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
 	aggregatePairwiseJudgments,
 	buildCandidateAuditPrompt,
 	combineCandidateAudits,
+	verifyCandidatesSampled,
 	buildPairSchedule,
 	buildPairwisePrompt,
 	parseCandidateAudit,
@@ -105,6 +109,55 @@ describe("sampled verifier prompt", () => {
 			summary: "Pass 1: No defect found Pass 2: Primitive branch fails",
 		});
 });
+});
+
+test("audits candidate workspaces with read-only execution tools", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-audit-test-"));
+	const candidateA = path.join(root, "candidate-a");
+	const candidateB = path.join(root, "candidate-b");
+	const omp = path.join(root, "mock-omp.ts");
+	const log = path.join(root, "calls.jsonl");
+	try {
+		await Promise.all([mkdir(candidateA), mkdir(candidateB)]);
+		await Promise.all([Bun.write(path.join(candidateA, "code.js"), "A"), Bun.write(path.join(candidateB, "code.js"), "B")]);
+		await Bun.write(omp, `#!/usr/bin/env bun
+import { appendFile } from "node:fs/promises";
+const prompt = process.argv.at(-1);
+const cwd = process.argv[process.argv.indexOf("--cwd") + 1];
+const audit = prompt.includes("Audit one candidate independently");
+await appendFile(${JSON.stringify(log)}, JSON.stringify({ cwd, audit, tools: process.argv.includes("--tools"), noTools: process.argv.includes("--no-tools") }) + "\\n");
+const text = audit
+  ? JSON.stringify({ probabilityPass: 90, findings: [], summary: "checked" })
+  : JSON.stringify({ probabilityA: 50, reason: "tie" });
+console.log(JSON.stringify({
+  type: "message_end",
+  message: { role: "assistant", content: [{ type: "text", text }], usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } } },
+}));
+`);
+		await chmod(omp, 0o755);
+		await verifyCandidatesSampled({
+			problem: "Choose",
+			candidates: ["A", "B"],
+			candidateCwds: [candidateA, candidateB],
+			criteria: { Correctness: "Works" },
+			model: "test/model",
+			nEvaluations: 1,
+			seed: 0,
+			cachePath: path.join(root, "cache.json"),
+			cwd: root,
+			ompBin: omp,
+		});
+		const calls = (await Bun.file(log).text()).trim().split("\n").map(line => JSON.parse(line));
+		const audits = calls.filter(call => call.audit);
+		expect(audits).toHaveLength(4);
+		expect(audits.every(call => call.tools && !call.noTools)).toBe(true);
+		expect(audits.map(call => call.cwd).sort()).toEqual([candidateA, candidateA, candidateB, candidateB].sort());
+		const pairs = calls.filter(call => !call.audit);
+		expect(pairs).toHaveLength(1);
+		expect(pairs[0]).toMatchObject({ cwd: root, tools: false, noTools: true });
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test("keeps recorded tool evidence but excludes assistant narration", () => {

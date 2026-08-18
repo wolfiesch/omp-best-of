@@ -210,6 +210,25 @@ function verifierUsd(verifier: VerifierResult | null): number {
 	);
 }
 
+async function materializeAuditRepo(pool: TaskPool, candidate: PoolCandidate): Promise<string | null> {
+	const repoDir = await prepareTaskRepo(
+		path.join(TASKS_ROOT, pool.taskId),
+		pool.generatedBy.visibleTests,
+	);
+	if (!candidate.patch.trim()) return repoDir;
+	const patchPath = path.join(repoDir, ".candidate.patch");
+	try {
+		await Bun.write(patchPath, candidate.patch);
+		await requireCommand(["git", "apply", "--binary", patchPath], repoDir);
+		return repoDir;
+	} catch {
+		await rm(repoDir, { recursive: true, force: true });
+		return null;
+	} finally {
+		await rm(patchPath, { force: true });
+	}
+}
+
 async function rankPool(
 	pool: TaskPool,
 	options: BenchOptions,
@@ -225,21 +244,31 @@ async function rankPool(
 		seed: options.seed,
 		cachePath,
 	};
-	const verifier = options.verifierBackend === "sampled"
-		? await verifyCandidatesSampled({
-				...common,
-				candidates: eligible.map(composeSampledVerifierEvidence),
-				model: options.verifierModel,
-				thinking: options.verifierThinking,
-				cwd: REPO_ROOT,
-			})
-		: await verifyCandidates({
-				...common,
-				candidates: eligible.map(composeVerifierTrajectory),
-				endpoint: endpoint!,
-				pivots: Math.min(options.pivots, eligible.length),
-			});
-	return { verifier, eligible };
+	if (options.verifierBackend !== "sampled") {
+		const verifier = await verifyCandidates({
+			...common,
+			candidates: eligible.map(composeVerifierTrajectory),
+			endpoint: endpoint!,
+			pivots: Math.min(options.pivots, eligible.length),
+		});
+		return { verifier, eligible };
+	}
+	const candidateCwds = await Promise.all(eligible.map(candidate => materializeAuditRepo(pool, candidate)));
+	try {
+		const verifier = await verifyCandidatesSampled({
+			...common,
+			candidates: eligible.map(composeSampledVerifierEvidence),
+			model: options.verifierModel,
+			thinking: options.verifierThinking,
+			cwd: REPO_ROOT,
+			candidateCwds,
+		});
+		return { verifier, eligible };
+	} finally {
+		await Promise.all(candidateCwds.map(candidateCwd =>
+			candidateCwd ? rm(candidateCwd, { recursive: true, force: true }) : Promise.resolve(),
+		));
+	}
 }
 
 function summarize(pool: TaskPool, eligible: PoolCandidate[], verifier: VerifierResult | null, wallClockMs: number, ranked: boolean): TaskOutcome {

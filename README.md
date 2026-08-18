@@ -161,15 +161,16 @@ Two verifier backends are available:
   score-token distributions, repeats evaluations to reduce variance, decomposes the rubric,
   and uses its probabilistic pivot tournament. This is the paper's method and requires a
   compatible scoring endpoint.
-- **`sampled`.** OMP audits each candidate twice for contract-valid counterexamples, with
-  the second pass explicitly challenging the first pass's conclusions, then asks the selected
-  subscription model for a pairwise probability for every unordered pair. Pairwise judges
-  receive the combined audits as untrusted leads and must verify each finding against the
-  patch. Candidate orientation and call order are seeded, up to four calls run concurrently,
-  and pairwise-majority wins determine the ranking. A candidate's weakest head-to-head
-  probability breaks majority cycles, followed by expected win probability. Semantic contract
-  violations are decisive; validation quality is only a tie-breaker. `--evaluations` repeats
-  the pairwise round robin. Results are cached after every call.
+- **`sampled`.** OMP materializes each candidate's final repository in a disposable workspace
+  and audits it twice for contract-valid counterexamples. Audit passes can inspect files and
+  run focused read-only commands; the second pass explicitly challenges the first pass's
+  conclusions. OMP then asks the selected subscription model for a pairwise probability for
+  every unordered pair. Pairwise judges receive the combined audits as untrusted leads and
+  must verify each finding against the patch. Candidate orientation and call order are seeded,
+  up to four calls run concurrently, and pairwise-majority wins determine the ranking.
+  A candidate's weakest head-to-head probability breaks majority cycles, followed by expected
+  win probability. Semantic contract violations are decisive; validation quality is only a
+  tie-breaker. `--evaluations` repeats the pairwise round robin. Results are cached after every call.
 
 Both backends use the same three criteria:
 
@@ -183,7 +184,8 @@ In logprob mode, ranking uses the upstream probabilistic pivot tournament rather
 pairs. A cyclic ring pass gives every candidate one comparison, then leaders become pivots.
 The logprob verifier receives each rendered trajectory, final patch, and process result.
 Sampled judgments receive the patch, recorded tool calls/results, and process result while
-excluding assistant reasoning and final claims. This preserves concrete failed checks
+excluding assistant reasoning and final claims. Candidate audits also inspect each disposable
+final workspace and can execute focused read-only checks. This preserves concrete evidence
 without letting candidate-authored validation narration outweigh implementation semantics.
 
 ## Cost and latency model
