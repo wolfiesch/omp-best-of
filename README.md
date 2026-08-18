@@ -180,11 +180,10 @@ Both backends use the same three criteria:
 
 In logprob mode, ranking uses the upstream probabilistic pivot tournament rather than all
 pairs. A cyclic ring pass gives every candidate one comparison, then leaders become pivots.
-Sampled mode deliberately uses all pairs, requiring $N(N-1)/2$ calls per evaluation.
-
 The logprob verifier receives each rendered trajectory, final patch, and process result.
-Sampled judgments receive the patch and process result but omit the agent-authored transcript,
-which prevents validation narration from outweighing implementation semantics.
+Sampled judgments receive the patch, recorded tool calls/results, and process result while
+excluding assistant reasoning and final claims. This preserves concrete failed checks
+without letting candidate-authored validation narration outweigh implementation semantics.
 
 ## Cost and latency model
 

@@ -138,11 +138,30 @@ export function composeVerifierTrajectory(candidate: Pick<CandidateResult, "tran
 		.join("\n\n");
 }
 
-/** Keeps sampled judgments focused on the implementation instead of candidate-authored validation narration. */
-export function composeSampledVerifierEvidence(candidate: Pick<CandidateResult, "patch" | "exitCode" | "stderr">): string {
+/** Extracts recorded tool invocations/results while excluding assistant reasoning and final claims. */
+export function extractRecordedToolEvidence(transcript: string, maxChars = 12_000): string {
+	const sections = transcript.split(/(?=^## )/m);
+	const evidence: string[] = [];
+	for (const section of sections) {
+		if (section.startsWith("## toolResult\n")) {
+			evidence.push(section.trim());
+			continue;
+		}
+		if (!section.startsWith("## assistant\n")) continue;
+		evidence.push(...section.match(/^\[tool [^\n]+$/gm) ?? []);
+	}
+	const joined = evidence.join("\n\n");
+	return joined.length <= maxChars ? joined : `[earlier tool evidence omitted]\n${joined.slice(-maxChars)}`;
+}
+
+/** Keeps sampled judgments focused on code and recorded execution instead of assistant narration. */
+export function composeSampledVerifierEvidence(candidate: Pick<CandidateResult, "transcript" | "patch" | "exitCode" | "stderr">): string {
+	const toolEvidence = extractRecordedToolEvidence(candidate.transcript);
 	return [
 		"## Final repository patch",
 		candidate.patch || "(no repository changes)",
+		"## Recorded tool evidence",
+		toolEvidence || "(none)",
 		"## Process result",
 		`exit_code=${candidate.exitCode}`,
 		candidate.stderr ? `stderr:\n${candidate.stderr}` : "stderr: (empty)",
