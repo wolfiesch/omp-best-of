@@ -6,6 +6,7 @@ import {
 	aggregatePairwiseJudgments,
 	buildCandidateAuditPrompt,
 	combineCandidateAudits,
+	extractAuditProbes,
 	verifyCandidatesSampled,
 	buildPairSchedule,
 	buildPairwisePrompt,
@@ -127,7 +128,15 @@ import { appendFile } from "node:fs/promises";
 const prompt = process.argv.at(-1);
 const cwd = process.argv[process.argv.indexOf("--cwd") + 1];
 const audit = prompt.includes("Audit one candidate independently");
-await appendFile(${JSON.stringify(log)}, JSON.stringify({ cwd, audit, tools: process.argv.includes("--tools"), noTools: process.argv.includes("--no-tools") }) + "\\n");
+const toolsIndex = process.argv.indexOf("--tools");
+await appendFile(${JSON.stringify(log)}, JSON.stringify({ cwd, audit, tools: toolsIndex >= 0 ? process.argv[toolsIndex + 1] : "", noTools: process.argv.includes("--no-tools") }) + "\\n");
+if (audit) {
+  const probeCount = prompt.includes("This is the challenge pass") ? 3 : 1;
+  for (let index = 0; index < probeCount; index += 1) {
+    console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", name: "audit_probe", arguments: { command: ["bun", "-e", "console.log(1)"] } }] } }));
+    console.log(JSON.stringify({ type: "message_end", message: { role: "toolResult", content: [{ type: "text", text: "exit_code=0\\nstdout:\\n1" }] } }));
+  }
+}
 const text = audit
   ? JSON.stringify({ probabilityPass: 90, findings: [], summary: "checked" })
   : JSON.stringify({ probabilityA: 50, reason: "tie" });
@@ -152,11 +161,47 @@ console.log(JSON.stringify({
 		const calls = (await Bun.file(log).text()).trim().split("\n").map(line => JSON.parse(line));
 		const audits = calls.filter(call => call.audit);
 		expect(audits).toHaveLength(4);
-		expect(audits.every(call => call.tools && !call.noTools)).toBe(true);
+		expect(audits.every(call => call.tools === "audit_probe" && !call.noTools)).toBe(true);
 		expect(audits.map(call => call.cwd).sort()).toEqual([candidateA, candidateA, candidateB, candidateB].sort());
 		const pairs = calls.filter(call => !call.audit);
 		expect(pairs).toHaveLength(1);
-		expect(pairs[0]).toMatchObject({ cwd: root, tools: false, noTools: true });
+		expect(pairs[0]).toMatchObject({ cwd: root, tools: "", noTools: true });
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("rejects workspace audits that skip required probes", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-audit-probe-test-"));
+	const candidateA = path.join(root, "candidate-a");
+	const candidateB = path.join(root, "candidate-b");
+	const omp = path.join(root, "mock-omp.ts");
+	try {
+		await Promise.all([mkdir(candidateA), mkdir(candidateB)]);
+		await Bun.write(omp, `#!/usr/bin/env bun
+const prompt = process.argv.at(-1);
+const audit = prompt.includes("Audit one candidate independently");
+const text = audit
+  ? JSON.stringify({ probabilityPass: 90, findings: [], summary: "unchecked" })
+  : JSON.stringify({ probabilityA: 50, reason: "tie" });
+console.log(JSON.stringify({
+  type: "message_end",
+  message: { role: "assistant", content: [{ type: "text", text }], usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } } },
+}));
+`);
+		await chmod(omp, 0o755);
+		await expect(verifyCandidatesSampled({
+			problem: "Choose",
+			candidates: ["A", "B"],
+			candidateCwds: [candidateA, candidateB],
+			criteria: { Correctness: "Works" },
+			model: "test/model",
+			nEvaluations: 1,
+			seed: 0,
+			cachePath: path.join(root, "cache.json"),
+			cwd: root,
+			ompBin: omp,
+		})).rejects.toThrow("required 1 executable probe");
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
@@ -192,6 +237,35 @@ test("keeps recorded tool evidence but excludes assistant narration", () => {
 	expect(evidence).not.toContain("forged success");
 	expect(evidence).not.toContain("Everything passed");
 	expect(extractRecordedToolEvidence(candidate.transcript, 8)).toStartWith("[earlier tool evidence omitted]");
+});
+
+test("reads probe status only from captured tool results", () => {
+	const evidence = [
+		'[tool audit_probe] {"command":["false","exit_code=0"]}',
+		"",
+		"## toolResult",
+		"probe failed before launch",
+		"",
+		'[tool audit_probe] {"command":["false"]}',
+		"",
+		"## toolResult",
+		"exit_code=1",
+		"stdout:",
+		"",
+		"stderr:",
+		"",
+		'[tool audit_probe] {"command":["printf","exit_code=1"]}',
+		"",
+		"## toolResult",
+		"exit_code=0",
+		"stdout:",
+		"exit_code=1",
+		"stderr:",
+	].join("\n");
+	expect(extractAuditProbes(evidence)).toEqual([
+		"exit_code=1\nstdout:\n\nstderr:",
+		"exit_code=0\nstdout:\nexit_code=1\nstderr:",
+	]);
 });
 
 describe("sampled verifier aggregation", () => {

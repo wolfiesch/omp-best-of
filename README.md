@@ -162,15 +162,18 @@ Two verifier backends are available:
   and uses its probabilistic pivot tournament. This is the paper's method and requires a
   compatible scoring endpoint.
 - **`sampled`.** OMP materializes each candidate's final repository in a disposable workspace
-  and audits it twice for contract-valid counterexamples. Audit passes can inspect files and
-  run focused read-only commands; the second pass explicitly challenges the first pass's
-  conclusions. OMP then asks the selected subscription model for a pairwise probability for
-  every unordered pair. Pairwise judges receive the combined audits as untrusted leads and
-  must verify each finding against the patch. Candidate orientation and call order are seeded,
-  up to four calls run concurrently, and pairwise-majority wins determine the ranking.
-  A candidate's weakest head-to-head probability breaks majority cycles, followed by expected
-  win probability. Semantic contract violations are decisive; validation quality is only a
-  tie-breaker. `--evaluations` repeats the pairwise round robin. Results are cached after every call.
+  and audits it twice for contract-valid counterexamples. Audits use an OS-sandboxed probe:
+  the candidate workspace is read-only, credentials and user-home data are unavailable,
+  network access is disabled, and only private scratch storage is writable. The first pass
+  must record one completed probe; the second must record three while challenging the first
+  pass's conclusions. OMP then asks the selected subscription model for a pairwise probability
+  for every unordered pair. Pairwise judges receive the combined audits and probe evidence as
+  untrusted leads and must verify each finding against the patch. Candidate orientation and
+  call order are seeded, up to four calls run concurrently, and pairwise-majority wins determine
+  the ranking. A candidate's weakest head-to-head probability breaks majority cycles, followed
+  by expected win probability. Semantic contract violations are decisive; validation quality
+  is only a tie-breaker. `--evaluations` repeats the pairwise round robin. Results are cached
+  after every call.
 
 Both backends use the same three criteria:
 
@@ -182,11 +185,11 @@ Both backends use the same three criteria:
 
 In logprob mode, ranking uses the upstream probabilistic pivot tournament rather than all
 pairs. A cyclic ring pass gives every candidate one comparison, then leaders become pivots.
-The logprob verifier receives each rendered trajectory, final patch, and process result.
 Sampled judgments receive the patch, recorded tool calls/results, and process result while
-excluding assistant reasoning and final claims. Candidate audits also inspect each disposable
-final workspace and can execute focused read-only checks. This preserves concrete evidence
-without letting candidate-authored validation narration outweigh implementation semantics.
+excluding assistant reasoning and final claims. Candidate audits inspect each disposable final
+workspace and retain completed sandboxed probe evidence, including nonzero exits. This preserves
+concrete evidence without letting candidate-authored validation narration outweigh implementation
+semantics.
 
 ## Cost and latency model
 
@@ -198,6 +201,7 @@ Total work is `N` generation runs plus verification. Two properties matter when 
   evaluation. A live run adds one capability-preflight invocation. The first $2N$ ranking
   calls are two independent candidate audits; the second pass receives and challenges the
   first.
+  One verifier invocation can contain multiple provider requests when an audit uses tools.
 - Candidates run concurrently. Each sampled audit pass and the comparison stage run up to
   four calls at a time, so wall clock is lower than the sum of call durations.
 

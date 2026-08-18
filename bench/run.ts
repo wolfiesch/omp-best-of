@@ -210,7 +210,7 @@ function verifierUsd(verifier: VerifierResult | null): number {
 	);
 }
 
-async function materializeAuditRepo(pool: TaskPool, candidate: PoolCandidate): Promise<string | null> {
+async function materializeAuditRepo(pool: TaskPool, candidate: PoolCandidate): Promise<string> {
 	const repoDir = await prepareTaskRepo(
 		path.join(TASKS_ROOT, pool.taskId),
 		pool.generatedBy.visibleTests,
@@ -221,9 +221,9 @@ async function materializeAuditRepo(pool: TaskPool, candidate: PoolCandidate): P
 		await Bun.write(patchPath, candidate.patch);
 		await requireCommand(["git", "apply", "--binary", patchPath], repoDir);
 		return repoDir;
-	} catch {
+	} catch (error) {
 		await rm(repoDir, { recursive: true, force: true });
-		return null;
+		throw new Error(`Cannot materialize candidate ${candidate.index + 1} for executable audit`, { cause: error });
 	} finally {
 		await rm(patchPath, { force: true });
 	}
@@ -253,8 +253,9 @@ async function rankPool(
 		});
 		return { verifier, eligible };
 	}
-	const candidateCwds = await Promise.all(eligible.map(candidate => materializeAuditRepo(pool, candidate)));
+	const candidateCwds: string[] = [];
 	try {
+		for (const candidate of eligible) candidateCwds.push(await materializeAuditRepo(pool, candidate));
 		const verifier = await verifyCandidatesSampled({
 			...common,
 			candidates: eligible.map(composeSampledVerifierEvidence),
@@ -265,9 +266,7 @@ async function rankPool(
 		});
 		return { verifier, eligible };
 	} finally {
-		await Promise.all(candidateCwds.map(candidateCwd =>
-			candidateCwd ? rm(candidateCwd, { recursive: true, force: true }) : Promise.resolve(),
-		));
+		await Promise.all(candidateCwds.map(candidateCwd => rm(candidateCwd, { recursive: true, force: true })));
 	}
 }
 
