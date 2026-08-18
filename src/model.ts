@@ -39,7 +39,6 @@ export interface VerifierEndpoint {
 	nativeScoreTags: boolean;
 }
 
-
 /**
  * Upstream's own dispatch condition, copied verbatim from
  * `fine_grained_reward.create_openai_client`: a DeepSeek base URL gets the
@@ -72,8 +71,8 @@ export function servesNativeScoreTags(baseUrl: string): boolean {
 export function matchModels(models: readonly RegistryModel[], selector: string): RegistryModel[] {
 	const wanted = selector.trim();
 	if (!wanted) return [];
-	const qualified = models.filter(model => `${model.provider}/${model.id}` === wanted);
-	const bare = models.filter(model => model.id === wanted && !qualified.includes(model));
+	const qualified = models.filter((model) => `${model.provider}/${model.id}` === wanted);
+	const bare = models.filter((model) => model.id === wanted && !qualified.includes(model));
 	return [...qualified, ...bare];
 }
 
@@ -82,17 +81,16 @@ export function suggestModels(models: readonly RegistryModel[], selector: string
 	const stem = (selector.trim().toLowerCase().split("/").pop() ?? "").slice(0, 24);
 	if (!stem) return [];
 	return models
-		.filter(model => model.id.toLowerCase().includes(stem))
+		.filter((model) => model.id.toLowerCase().includes(stem))
 		.slice(0, limit)
-		.map(model => `${model.provider}/${model.id}`);
+		.map((model) => `${model.provider}/${model.id}`);
 }
 
 /** Wrap a live registry, session-owned or CLI-owned, in the narrow source shape. */
 export function modelSourceFromRegistry(registry: ModelRegistry, close?: () => void): ModelSource {
 	return {
 		list: async () => registry.getAll(),
-		apiKey: model =>
-			registry.getApiKeyForProvider(model.provider, undefined, { baseUrl: model.baseUrl, modelId: model.id }),
+		apiKey: (model) => registry.getApiKeyForProvider(model.provider, undefined, { baseUrl: model.baseUrl, modelId: model.id }),
 		close,
 	};
 }
@@ -159,7 +157,7 @@ export async function resolveVerifierEndpoint(selector: string, source?: ModelSo
 				nativeScoreTags: servesNativeScoreTags(model.baseUrl),
 			};
 		}
-		const providers = [...new Set(usable.map(model => model.provider))];
+		const providers = [...new Set(usable.map((model) => model.provider))];
 		throw new Error(
 			`omp holds no credential for verifier model "${selector}", offered by ${providers.join(", ")}. Check one with \`omp token ${providers[0]}\`, or pass --verifier-model <provider/model> for a provider you have.`,
 		);

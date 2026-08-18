@@ -1,7 +1,7 @@
-import { access, chmod, mkdtemp, rm } from "node:fs/promises";
+import { expect, test } from "bun:test";
+import { access, chmod, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { expect, test } from "bun:test";
 import { runBestOf } from "../src/runner";
 
 async function run(args: string[], cwd: string): Promise<string> {
@@ -30,6 +30,7 @@ test("runs candidates in OMP isolation and cleans every workspace", async () => 
 const cwdIndex = process.argv.indexOf("--cwd");
 const cwd = process.argv[cwdIndex + 1];
 await Bun.write(new URL("candidate.txt", \`file://\${cwd}/\`), "isolated candidate\\n");
+await Bun.write(new URL("tracked.bin", \`file://\${cwd}/\`), new Uint8Array([0, 255, 1, 254, 2, 253]));
 console.log(JSON.stringify({
 	type: "message_end",
 	message: {
@@ -43,11 +44,9 @@ console.log(JSON.stringify({
 		await chmod(omp, 0o755);
 		await run(["git", "init", "-q", repo], temporaryRoot);
 		await Bun.write(path.join(repo, "tracked.txt"), "parent baseline\n");
-		await run(["git", "add", "tracked.txt"], repo);
-		await run(
-			["git", "-c", "user.name=OMP Test", "-c", "user.email=omp@example.invalid", "commit", "-qm", "baseline"],
-			repo,
-		);
+		await Bun.write(path.join(repo, "tracked.bin"), new Uint8Array([0, 1, 2, 3, 4, 5]));
+		await run(["git", "add", "tracked.txt", "tracked.bin"], repo);
+		await run(["git", "-c", "user.name=OMP Test", "-c", "user.email=omp@example.invalid", "commit", "-qm", "baseline"], repo);
 
 		process.env.OMP_BEST_OF_OMP_BIN = omp;
 		process.env.PI_CODING_AGENT_DIR = path.join(temporaryRoot, "agent");
@@ -70,16 +69,39 @@ console.log(JSON.stringify({
 			criteria: {},
 		});
 
+		expect(result.selection).toEqual({ performed: false, winnerIndex: null });
+		expect(result.application).toEqual({ requested: false, applied: false });
+
 		expect(result.candidates).toHaveLength(2);
 		for (const candidate of result.candidates) {
 			if (candidate.exitCode !== 0) throw new Error(`Candidate failed: ${candidate.stderr}`);
 			expect(candidate.patch).toContain("candidate.txt");
-			expect(await access(candidate.worktree).then(() => true, () => false)).toBe(false);
+			expect(candidate.patch).toContain("GIT binary patch");
+			expect(
+				await access(candidate.workspace).then(
+					() => true,
+					() => false,
+				),
+			).toBe(false);
 		}
-		expect(await access(path.join(repo, "candidate.txt")).then(() => true, () => false)).toBe(false);
+		expect(
+			await access(path.join(repo, "candidate.txt")).then(
+				() => true,
+				() => false,
+			),
+		).toBe(false);
 		expect(await run(["git", "status", "--porcelain=v1", "--untracked-files=all"], repo)).toBe("");
 		const worktreeList = await run(["git", "worktree", "list", "--porcelain"], repo);
 		expect(worktreeList.match(/^worktree /gm)).toHaveLength(1);
+		const manifest = JSON.parse(await readFile(path.join(result.artifactDir, "result.json"), "utf8"));
+		expect(manifest.schemaVersion).toBe(1);
+		expect(manifest.selection).toEqual({ performed: false, winnerIndex: null });
+		expect(manifest.candidateSummaries).toHaveLength(2);
+		expect(manifest.candidates).toBeUndefined();
+		expect(JSON.stringify(manifest)).not.toContain(result.candidates[0].workspace);
+		expect((await stat(result.artifactDir)).mode & 0o777).toBe(0o700);
+		expect((await stat(path.join(result.artifactDir, "result.json"))).mode & 0o777).toBe(0o600);
+		expect((await stat(path.join(result.artifactDir, "candidate-1", "events.jsonl"))).mode & 0o777).toBe(0o600);
 	} finally {
 		if (previousOmpBin === undefined) delete process.env.OMP_BEST_OF_OMP_BIN;
 		else process.env.OMP_BEST_OF_OMP_BIN = previousOmpBin;
@@ -89,4 +111,4 @@ console.log(JSON.stringify({
 		else process.env.OMP_WORKTREE_DIR = previousWorktreeDir;
 		await rm(temporaryRoot, { recursive: true, force: true });
 	}
-});
+}, 15_000);

@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -6,29 +5,41 @@ import {
 	captureDeltaPatch,
 	cleanupIsolation,
 	ensureIsolation,
-	parseIsolationMode,
 	type IsolationHandle,
+	parseIsolationMode,
 	type WorktreeBaseline,
 } from "@oh-my-pi/pi-coding-agent/task/worktree";
-import { parseJsonTranscript } from "./transcript";
+import { parseDurationMs } from "./args";
+import { ensurePrivateDirectory, secureExistingFile, writePrivateFile } from "./artifacts";
 import { resolveVerifierEndpoint } from "./model";
 import { requireCommand, runCommand } from "./process";
-import type { BestOfOptions, BestOfProgress, BestOfResult, CandidateResult, UsageSummary, VerifierResult } from "./types";
-import { assertScoringSupported, verifyCandidates } from "./verifier";
 import { assertSampledVerifierSupported, sampledVerifierUsage, verifyCandidatesSampled } from "./sampled-verifier";
+import { parseJsonTranscript } from "./transcript";
+import type { BestOfManifest, BestOfOptions, BestOfProgress, BestOfResult, CandidateResult, UsageSummary, VerifierResult } from "./types";
+import { assertScoringSupported, verifyCandidates } from "./verifier";
 
 const DEFAULT_AGENT_PROMPT = `Work independently on the task below. Modify the repository directly, run focused validation, and finish only when the requested behavior works. Do not commit changes. Preserve unrelated user work.\n\n`;
+const VERIFIER_TIMEOUT_MS = 120_000;
 
 function emit(options: BestOfOptions, progress: BestOfProgress): void {
 	options.onProgress?.(progress);
 }
 
-function maxTimeMs(value: string): number {
-	const match = /^(\d+)(s|m|h)?$/.exec(value.trim());
-	if (!match) throw new Error(`Invalid max time: ${value}`);
-	const amount = Number(match[1]);
-	const multiplier = match[2] === "h" ? 3_600_000 : match[2] === "m" ? 60_000 : 1_000;
-	return amount * multiplier + 30_000;
+function validateOptions(options: BestOfOptions): number {
+	if (!Number.isSafeInteger(options.n) || options.n < 2 || options.n > 8) {
+		throw new Error("Candidate count must be a safe integer between 2 and 8");
+	}
+	if (!Number.isSafeInteger(options.nEvaluations) || options.nEvaluations < 1) {
+		throw new Error("Verifier evaluations must be a positive safe integer");
+	}
+	if (!Number.isSafeInteger(options.pivots) || options.pivots < 1 || options.pivots > options.n) {
+		throw new Error("Pivots must be a safe integer between 1 and N");
+	}
+	if (!Number.isSafeInteger(options.seed)) throw new Error("Seed must be a safe integer");
+	if (options.apply && !options.verify) throw new Error("A patch cannot be applied without verification because nothing selected it");
+	const duration = parseDurationMs(options.maxTime);
+	if (duration < 1) throw new Error("Max time must be greater than zero");
+	return duration;
 }
 
 function runId(): string {
@@ -67,6 +78,8 @@ async function runCandidate(
 	baseline: WorktreeBaseline,
 	artifactDir: string,
 	options: BestOfOptions,
+	timeoutMs: number,
+	signal: AbortSignal,
 ): Promise<CandidateResult> {
 	const started = Date.now();
 	const omp = process.env.OMP_BEST_OF_OMP_BIN ?? "omp";
@@ -105,7 +118,7 @@ async function runCandidate(
 		"-p",
 		prompt,
 	];
-	const processResult = await runCommand(command, { cwd: workspace, timeoutMs: maxTimeMs(options.maxTime) });
+	const processResult = await runCommand(command, { cwd: workspace, timeoutMs, signal });
 	const parsed = parseJsonTranscript(processResult.stdout);
 	let patch = "";
 	let patchError = "";
@@ -114,17 +127,19 @@ async function runCandidate(
 	} catch (error) {
 		patchError = error instanceof Error ? error.message : String(error);
 	}
-	await mkdir(artifactDir, { recursive: true });
+	await ensurePrivateDirectory(artifactDir);
 	await Promise.all([
-		Bun.write(path.join(artifactDir, "events.jsonl"), processResult.stdout),
-		Bun.write(path.join(artifactDir, "stderr.log"), `${processResult.stderr}${patchError ? `\n${patchError}\n` : ""}`),
-		Bun.write(path.join(artifactDir, "trajectory.md"), parsed.transcript),
-		Bun.write(path.join(artifactDir, "changes.patch"), patch),
+		writePrivateFile(path.join(artifactDir, "events.jsonl"), processResult.stdout),
+		writePrivateFile(path.join(artifactDir, "stderr.log"), `${processResult.stderr}${patchError ? `\n${patchError}\n` : ""}`),
+		writePrivateFile(path.join(artifactDir, "trajectory.md"), parsed.transcript),
+		writePrivateFile(path.join(artifactDir, "changes.patch"), patch),
 	]);
 	return {
 		index,
-		worktree: workspace,
-		exitCode: patchError ? 1 : processResult.exitCode,
+		workspace,
+		exitCode: patchError || processResult.timedOut || processResult.aborted ? 1 : processResult.exitCode,
+		timedOut: processResult.timedOut,
+		aborted: processResult.aborted,
 		durationMs: Date.now() - started,
 		transcript: parsed.transcript,
 		recordedToolEvidence: parsed.recordedToolEvidence,
@@ -160,7 +175,7 @@ export function extractRecordedToolEvidence(transcript: string, maxChars = 12_00
 			continue;
 		}
 		if (!section.startsWith("## assistant\n")) continue;
-		evidence.push(...section.match(/^\[tool [^\n]+$/gm) ?? []);
+		evidence.push(...(section.match(/^\[tool [^\n]+$/gm) ?? []));
 	}
 	const joined = evidence.join("\n\n");
 	return joined.length <= maxChars ? joined : `[earlier tool evidence omitted]\n${joined.slice(-maxChars)}`;
@@ -193,30 +208,29 @@ async function assertParentUnchanged(root: string, expectedHead: string, message
 	if (currentHead !== expectedHead || status.trim()) throw new Error(message);
 }
 
-async function applyPatch(root: string, expectedHead: string, patch: string, artifactDir: string): Promise<void> {
+async function applyPatch(root: string, expectedHead: string, patch: string, artifactDir: string): Promise<boolean> {
 	await assertParentUnchanged(
 		root,
 		expectedHead,
-		"The parent checkout changed while candidates were running; the winner was not applied.",
+		"The parent checkout changed while candidates were running; the selected patch was not applied.",
 	);
-	if (!patch.trim()) return;
+	if (!patch.trim()) return false;
 	const patchPath = path.join(artifactDir, "winner.patch");
-	await Bun.write(patchPath, patch);
+	await writePrivateFile(patchPath, patch);
 	await requireCommand(["git", "apply", "--check", "--binary", patchPath], root);
 	await requireCommand(["git", "apply", "--binary", patchPath], root);
+	return true;
 }
 
 export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
-	if (options.n < 2 || options.n > 8) throw new Error("Candidate count must be between 2 and 8");
-	if (options.nEvaluations < 1) throw new Error("Verifier evaluations must be at least 1");
-	if (options.pivots < 1 || options.pivots > options.n) throw new Error("Pivots must be between 1 and N");
-	if (options.apply && !options.verify) throw new Error("A patch cannot be applied without verification because nothing selected it");
+	const candidateTimeoutMs = validateOptions(options);
+	options.signal?.throwIfAborted();
 	const started = Date.now();
 	const id = runId();
-	const artifacts = artifactRoot(id);
-	await mkdir(artifacts, { recursive: true });
 	emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Checking repository" });
 	const { root, head } = await assertCleanRepo(options.cwd);
+	const artifacts = artifactRoot(id);
+	await ensurePrivateDirectory(artifacts);
 	// Prove the selected verifier transport before candidate generation spends
 	// anything. Logprob mode probes constrained scoring; sampled mode exercises
 	// one real OMP subscription judgment.
@@ -225,17 +239,23 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 	if (options.verify && options.verifierBackend === "logprob") {
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Resolving verifier endpoint" });
 		endpoint = await resolveVerifierEndpoint(options.verifierModel, options.modelSource);
-		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Probing verifier scoring capability" });
-		await assertScoringSupported(endpoint);
+		emit(options, {
+			phase: "preparing",
+			completedCandidates: 0,
+			totalCandidates: options.n,
+			message: "Probing verifier scoring capability",
+		});
+		await assertScoringSupported(endpoint, options.signal);
 	} else if (options.verify) {
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Probing sampled verifier" });
-		sampledPreflightUsage = await assertSampledVerifierSupported(options.verifierModel, root);
+		sampledPreflightUsage = await assertSampledVerifierSupported(options.verifierModel, root, options.signal);
 	}
 	const baseline = await captureBaseline(root);
 	const isolations: IsolationHandle[] = [];
 
 	try {
 		for (let index = 0; index < options.n; index += 1) {
+			options.signal?.throwIfAborted();
 			isolations.push(await createCandidateIsolation(root, `${id}-candidate-${index + 1}`));
 		}
 		await assertParentUnchanged(
@@ -245,14 +265,21 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 		);
 		emit(options, { phase: "generating", completedCandidates: 0, totalCandidates: options.n, message: `Running ${options.n} candidates` });
 		let completed = 0;
-		const candidates = await Promise.all(
-			isolations.map(async (isolation, index) => {
+		let candidateFailure: unknown;
+		const candidateController = new AbortController();
+		const abortCandidates = (): void => candidateController.abort(options.signal?.reason);
+		options.signal?.addEventListener("abort", abortCandidates, { once: true });
+		if (options.signal?.aborted) abortCandidates();
+		const candidateRuns = isolations.map(async (isolation, index) => {
+			try {
 				const result = await runCandidate(
 					index,
 					isolation.mergedDir,
 					baseline,
 					path.join(artifacts, `candidate-${index + 1}`),
 					options,
+					candidateTimeoutMs,
+					candidateController.signal,
 				);
 				completed += 1;
 				emit(options, {
@@ -262,69 +289,131 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 					message: `Candidate ${index + 1} finished with exit code ${result.exitCode}`,
 				});
 				return result;
-			}),
+			} catch (error) {
+				candidateFailure ??= error;
+				candidateController.abort(error);
+				throw error;
+			}
+		});
+		const settled = await Promise.allSettled(candidateRuns);
+		options.signal?.removeEventListener("abort", abortCandidates);
+		options.signal?.throwIfAborted();
+		if (candidateFailure !== undefined) throw candidateFailure;
+		const candidates = settled.map((result) => {
+			if (result.status === "rejected") throw result.reason;
+			return result.value;
+		});
+		await assertParentUnchanged(
+			root,
+			head,
+			"The parent checkout changed while candidates were running; selection and application stopped.",
 		);
-		const eligible = candidates.filter(candidate => candidate.exitCode === 0);
+		const eligible = candidates.filter((candidate) => candidate.exitCode === 0);
 		if (eligible.length === 0) throw new Error(`All candidates failed. Artifacts: ${artifacts}`);
 		let verifier: VerifierResult | null = null;
-		let winner = eligible[0];
+		let selectedCandidate: CandidateResult | null = null;
+		const verifierCachePath = path.join(artifacts, "verifier-cache.json");
 		if (!options.verify) {
-			// Pool collection: candidates and artifacts are kept, but nothing ranks them, so
-			// the reported winner is only the first eligible candidate.
 			emit(options, { phase: "verifying", completedCandidates: options.n, totalCandidates: options.n, message: "Skipping verification" });
 		} else if (eligible.length > 1) {
-			emit(options, { phase: "verifying", completedCandidates: options.n, totalCandidates: options.n, message: `Ranking ${eligible.length} candidates` });
+			emit(options, {
+				phase: "verifying",
+				completedCandidates: options.n,
+				totalCandidates: options.n,
+				message: `Ranking ${eligible.length} candidates`,
+			});
 			const common = {
 				problem: options.task,
 				criteria: options.criteria,
 				nEvaluations: options.nEvaluations,
 				seed: options.seed,
-				cachePath: path.join(artifacts, "verifier-cache.json"),
+				cachePath: verifierCachePath,
+				signal: options.signal,
+				timeoutMs: VERIFIER_TIMEOUT_MS,
 			};
-			verifier = options.verifierBackend === "sampled"
-				? await verifyCandidatesSampled({
+			try {
+				if (options.verifierBackend === "sampled") {
+					verifier = await verifyCandidatesSampled({
 						...common,
 						candidates: eligible.map(composeSampledVerifierEvidence),
 						model: options.verifierModel,
 						thinking: options.verifierThinking,
 						preflightUsage: sampledPreflightUsage,
 						cwd: root,
-					})
-				: await verifyCandidates({
+					});
+				} else {
+					if (!endpoint) throw new Error("Verifier endpoint was not resolved");
+					verifier = await verifyCandidates({
 						...common,
 						candidates: eligible.map(composeVerifierTrajectory),
-						endpoint: endpoint!,
+						endpoint,
 						pivots: Math.min(options.pivots, eligible.length),
 					});
-			winner = eligible[verifier.index];
-		} else if (options.verifierBackend === "sampled" && sampledPreflightUsage) {
-			verifier = {
-				backend: "sampled",
-				index: 0,
-				scores: [1],
-				ranking: [0],
-				nComparisons: 0,
-				criteria: Object.keys(options.criteria),
-				usage: sampledVerifierUsage([sampledPreflightUsage]),
-			};
+				}
+			} finally {
+				await secureExistingFile(verifierCachePath);
+			}
+			selectedCandidate = eligible[verifier.index];
+		} else {
+			selectedCandidate = eligible[0];
+			if (options.verifierBackend === "sampled" && sampledPreflightUsage) {
+				verifier = {
+					backend: "sampled",
+					index: 0,
+					scores: [1],
+					ranking: [0],
+					nComparisons: 0,
+					criteria: Object.keys(options.criteria),
+					usage: sampledVerifierUsage([sampledPreflightUsage]),
+				};
+			}
 		}
-		if (options.apply) {
-			emit(options, { phase: "applying", completedCandidates: options.n, totalCandidates: options.n, message: `Applying candidate ${winner.index + 1}` });
-			await applyPatch(root, head, winner.patch, artifacts);
+		let applied = false;
+		if (options.apply && selectedCandidate) {
+			emit(options, {
+				phase: "applying",
+				completedCandidates: options.n,
+				totalCandidates: options.n,
+				message: `Applying candidate ${selectedCandidate.index + 1}`,
+			});
+			applied = await applyPatch(root, head, selectedCandidate.patch, artifacts);
 		}
+		const durationMs = Date.now() - started;
 		const result: BestOfResult = {
 			runId: id,
 			artifactDir: artifacts,
-			winner,
+			selection: { performed: selectedCandidate !== null, winnerIndex: selectedCandidate?.index ?? null },
+			application: { requested: options.apply, applied },
 			candidates,
 			verifier,
-			applied: options.apply,
-			durationMs: Date.now() - started,
+			durationMs,
 		};
-		await Bun.write(path.join(artifacts, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
+		const manifest: BestOfManifest = {
+			schemaVersion: 1,
+			runId: id,
+			selection: result.selection,
+			candidateSummaries: candidates.map((candidate) => ({
+				index: candidate.index,
+				exitCode: candidate.exitCode,
+				timedOut: candidate.timedOut,
+				aborted: candidate.aborted,
+				durationMs: candidate.durationMs,
+				artifactDir: path.relative(artifacts, candidate.artifactDir),
+				usage: candidate.usage,
+			})),
+			verifier,
+			application: result.application,
+			durationMs,
+		};
+		await writePrivateFile(path.join(artifacts, "result.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 		return result;
 	} finally {
-		emit(options, { phase: "cleaning", completedCandidates: options.n, totalCandidates: options.n, message: "Removing isolated candidates" });
+		emit(options, {
+			phase: "cleaning",
+			completedCandidates: options.n,
+			totalCandidates: options.n,
+			message: "Removing isolated candidates",
+		});
 		await Promise.all(isolations.map(cleanupIsolation));
 	}
 }

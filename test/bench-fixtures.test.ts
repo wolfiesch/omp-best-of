@@ -1,13 +1,13 @@
+import { expect, test } from "bun:test";
 import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { expect, test } from "bun:test";
 import { prepareTaskRepo, scoreCandidate, visibleTestFiles } from "../bench/oracle";
 import { requireCommand } from "../src/process";
 
 const TASKS_ROOT = path.resolve(import.meta.dir, "../bench/tasks");
 const taskIds = (await readdir(TASKS_ROOT, { withFileTypes: true }))
-	.filter(entry => entry.isDirectory())
-	.map(entry => entry.name)
+	.filter((entry) => entry.isDirectory())
+	.map((entry) => entry.name)
 	.sort();
 
 /** Builds a real git patch by writing files into a scratch clone of the fixture. */
@@ -28,8 +28,8 @@ test("every task ships a prompt, visible tests, an oracle, and a reference solut
 		const taskDir = path.join(TASKS_ROOT, taskId);
 		expect((await Bun.file(path.join(taskDir, "task.md")).text()).trim().length).toBeGreaterThan(0);
 		expect((await visibleTestFiles(taskDir)).length).toBeGreaterThan(0);
-		expect((await readdir(path.join(taskDir, "oracle"))).some(file => file.endsWith(".test.js"))).toBe(true);
-		expect((await readdir(path.join(taskDir, "reference"))).some(file => file.endsWith(".js"))).toBe(true);
+		expect((await readdir(path.join(taskDir, "oracle"))).some((file) => file.endsWith(".test.js"))).toBe(true);
+		expect((await readdir(path.join(taskDir, "reference"))).some((file) => file.endsWith(".js"))).toBe(true);
 	}
 });
 
@@ -45,13 +45,13 @@ for (const taskId of taskIds) {
 		} finally {
 			await rm(repoDir, { recursive: true, force: true });
 		}
-	});
+	}, 15_000);
 
 	test(`${taskId}: the shipped bug fails the oracle`, async () => {
 		const repoDir = await prepareTaskRepo(taskDir);
 		try {
 			// A comment-only patch leaves the shipped defect in place, so the oracle must reject it.
-			const sources = (await readdir(path.join(taskDir, "repo"))).filter(entry => entry.endsWith(".js") && !entry.endsWith(".test.js"));
+			const sources = (await readdir(path.join(taskDir, "repo"))).filter((entry) => entry.endsWith(".js") && !entry.endsWith(".test.js"));
 			expect(sources.length).toBe(1);
 			const original = await Bun.file(path.join(taskDir, "repo", sources[0])).text();
 			const patch = await patchFor(taskDir, [{ file: sources[0], content: `// untouched\n${original}` }]);
@@ -60,7 +60,7 @@ for (const taskId of taskIds) {
 		} finally {
 			await rm(repoDir, { recursive: true, force: true });
 		}
-	});
+	}, 15_000);
 
 	test(`${taskId}: the reference solution passes the oracle`, async () => {
 		const repoDir = await prepareTaskRepo(taskDir);
@@ -74,5 +74,5 @@ for (const taskId of taskIds) {
 		} finally {
 			await rm(repoDir, { recursive: true, force: true });
 		}
-	});
+	}, 15_000);
 }

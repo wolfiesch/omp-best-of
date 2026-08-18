@@ -21,7 +21,7 @@ function contentText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
 	return content
-		.map(part => {
+		.map((part) => {
 			if (!part || typeof part !== "object") return "";
 			const value = part as Record<string, unknown>;
 			if (typeof value.text === "string") return value.text;

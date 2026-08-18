@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import path from "node:path";
-import { parseJsonTranscript } from "./transcript";
+import { writePrivateFile } from "./artifacts";
 import { runCommand } from "./process";
+import { parseJsonTranscript } from "./transcript";
 import type { UsageSummary, VerifierResult, VerifierUsage } from "./types";
 
 export interface SampledVerifierInput {
@@ -15,6 +15,7 @@ export interface SampledVerifierInput {
 	cachePath: string;
 	preflightUsage?: UsageSummary;
 	cwd?: string;
+	signal?: AbortSignal;
 }
 
 export interface PairComparison {
@@ -38,7 +39,6 @@ interface SampledCache {
 	comparisons: Record<string, CachedComparison>;
 }
 const JUDGE_PROMPT_VERSION = 5;
-
 
 export const SAMPLED_VERIFIER_SETTINGS = {
 	thinking: "low",
@@ -90,7 +90,12 @@ export function parsePairwiseJudgment(text: string): PairwiseJudgment {
 	}
 	if (!parsed || typeof parsed !== "object") throw new Error("Sampled verifier judgment must be an object");
 	const value = parsed as Record<string, unknown>;
-	if (typeof value.probabilityA !== "number" || !Number.isFinite(value.probabilityA) || value.probabilityA < 0 || value.probabilityA > 100) {
+	if (
+		typeof value.probabilityA !== "number" ||
+		!Number.isFinite(value.probabilityA) ||
+		value.probabilityA < 0 ||
+		value.probabilityA > 100
+	) {
 		throw new Error("Sampled verifier probabilityA must be a finite number from 0 to 100");
 	}
 	return { probabilityA: value.probabilityA, reason: typeof value.reason === "string" ? value.reason : "" };
@@ -144,9 +149,12 @@ async function judgePair(input: SampledVerifierInput, pair: PairComparison): Pro
 			"-p",
 			buildPairwisePrompt(input, pair),
 		],
-		{ cwd: input.cwd, timeoutMs: SAMPLED_VERIFIER_SETTINGS.timeoutMs },
+		{ cwd: input.cwd, timeoutMs: SAMPLED_VERIFIER_SETTINGS.timeoutMs, signal: input.signal },
 	);
-	if (result.exitCode !== 0) throw new Error(`Sampled verifier failed (${result.exitCode}): ${result.stderr.trim() || result.stdout.slice(0, 500)}`);
+	if (result.timedOut) throw new Error("Sampled verifier timed out");
+	if (result.aborted) throw input.signal?.reason ?? new DOMException("Sampled verifier aborted", "AbortError");
+	if (result.exitCode !== 0)
+		throw new Error(`Sampled verifier failed (${result.exitCode}): ${result.stderr.trim() || result.stdout.slice(0, 500)}`);
 	const parsed = parseJsonTranscript(result.stdout);
 	if (!parsed.finalResponse) throw new Error(`Sampled verifier returned no final response: ${result.stderr.slice(0, 500)}`);
 	return { ...parsePairwiseJudgment(parsed.finalResponse), usage: parsed.usage };
@@ -158,16 +166,18 @@ function cacheKey(pair: PairComparison): string {
 
 function cacheDigest(input: SampledVerifierInput): string {
 	return createHash("sha256")
-		.update(JSON.stringify({
-			problem: input.problem,
-			candidates: input.candidates,
-			criteria: input.criteria,
-			model: input.model,
-			thinking: input.thinking || SAMPLED_VERIFIER_SETTINGS.thinking,
-			nEvaluations: input.nEvaluations,
-			promptVersion: JUDGE_PROMPT_VERSION,
-			seed: input.seed,
-		}))
+		.update(
+			JSON.stringify({
+				problem: input.problem,
+				candidates: input.candidates,
+				criteria: input.criteria,
+				model: input.model,
+				thinking: input.thinking || SAMPLED_VERIFIER_SETTINGS.thinking,
+				nEvaluations: input.nEvaluations,
+				promptVersion: JUDGE_PROMPT_VERSION,
+				seed: input.seed,
+			}),
+		)
 		.digest("hex");
 }
 
@@ -221,7 +231,7 @@ export function aggregatePairwiseJudgments(
 		pairTotals[comparison.a][comparison.b] += shareA;
 		pairTotals[comparison.b][comparison.a] += 1 - shareA;
 	}
-	const expectedScores = expectedTotals.map(total => total / (nEvaluations * (candidateCount - 1)));
+	const expectedScores = expectedTotals.map((total) => total / (nEvaluations * (candidateCount - 1)));
 	const majorityWins = pairTotals.map((row, candidate) =>
 		row.reduce((wins, total, opponent) => {
 			if (candidate === opponent) return wins;
@@ -230,9 +240,9 @@ export function aggregatePairwiseJudgments(
 		}, 0),
 	);
 	const minimumPairScores = pairTotals.map((row, candidate) =>
-		Math.min(...row.filter((_, opponent) => candidate !== opponent).map(total => total / nEvaluations)),
+		Math.min(...row.filter((_, opponent) => candidate !== opponent).map((total) => total / nEvaluations)),
 	);
-	const scores = majorityWins.map(wins => wins / (candidateCount - 1));
+	const scores = majorityWins.map((wins) => wins / (candidateCount - 1));
 	const ranking = scores
 		.map((_, index) => index)
 		.sort(
@@ -253,7 +263,7 @@ export function sampledVerifierUsage(usages: UsageSummary[]): VerifierUsage {
 	return total;
 }
 
-export async function assertSampledVerifierSupported(model: string, cwd?: string): Promise<UsageSummary> {
+export async function assertSampledVerifierSupported(model: string, cwd?: string, signal?: AbortSignal): Promise<UsageSummary> {
 	const result = await judgePair(
 		{
 			problem: "Return the arithmetic sum.",
@@ -264,6 +274,7 @@ export async function assertSampledVerifierSupported(model: string, cwd?: string
 			seed: 0,
 			cachePath: "",
 			cwd,
+			signal,
 		},
 		{ evaluation: 0, a: 0, b: 1 },
 	);
@@ -274,32 +285,38 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 	const schedule = buildPairSchedule(input.candidates.length, input.nEvaluations, input.seed);
 	const cache = await loadCache(input);
 	const usage = sampledVerifierUsage(input.preflightUsage ? [input.preflightUsage] : []);
-	const missing = schedule.filter(pair => !cache.comparisons[cacheKey(pair)]);
+	const missing = schedule.filter((pair) => !cache.comparisons[cacheKey(pair)]);
 	let next = 0;
 	let firstError: unknown;
 	let save = Promise.resolve();
+	const controller = new AbortController();
+	const abortWorkers = (): void => controller.abort(input.signal?.reason);
+	input.signal?.addEventListener("abort", abortWorkers, { once: true });
+	if (input.signal?.aborted) abortWorkers();
+	const workerInput = { ...input, signal: controller.signal };
 	const worker = async () => {
 		while (firstError === undefined) {
 			const index = next++;
 			if (index >= missing.length) return;
 			const pair = missing[index];
 			try {
-				const judgment = await judgePair(input, pair);
+				const judgment = await judgePair(workerInput, pair);
 				cache.comparisons[cacheKey(pair)] = { ...pair, ...judgment };
 				addUsage(usage, judgment.usage);
-				save = save.then(async () => {
-					await Bun.write(input.cachePath, `${JSON.stringify(cache, null, 2)}\n`);
-				});
+				save = save.then(() => writePrivateFile(input.cachePath, `${JSON.stringify(cache, null, 2)}\n`));
 				await save;
 			} catch (error) {
-				firstError = error;
+				firstError ??= error;
+				controller.abort(error);
 			}
 		}
 	};
 	await Promise.all(Array.from({ length: Math.min(SAMPLED_VERIFIER_SETTINGS.maxWorkers, missing.length) }, worker));
+	input.signal?.removeEventListener("abort", abortWorkers);
 	await save;
+	input.signal?.throwIfAborted();
 	if (firstError !== undefined) throw firstError;
-	const completed = schedule.map(pair => cache.comparisons[cacheKey(pair)]);
+	const completed = schedule.map((pair) => cache.comparisons[cacheKey(pair)]);
 	for (const comparison of completed) {
 		if (!comparison) throw new Error("Sampled verifier cache is incomplete");
 	}

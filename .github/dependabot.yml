@@ -8,3 +8,12 @@ updates:
       prefix: "chore"
     labels:
       - dependencies
+
+  - package-ecosystem: bun
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore"
+    labels:
+      - dependencies

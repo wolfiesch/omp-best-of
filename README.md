@@ -124,7 +124,7 @@ As a standalone command, useful from scripts and CI:
 omp-best-of --n 3 --apply -- "Fix the failing authentication test"
 ```
 
-The standalone form writes progress to stderr and a JSON summary to stdout, so `runId`, `winner`, `applied`, `artifactDir`, `durationMs`, `candidateUsage`, and `verifier` can be piped straight into another tool. `winner` is one based, matching the labels shown during the run.
+The standalone form writes progress to stderr and a JSON summary to stdout. `selection.winnerIndex` is always zero based and is `null` when `--no-verify` skips selection. `application.requested` records intent; `application.applied` is true only when a non-empty patch changed the parent checkout.
 
 ### Options
 
@@ -210,14 +210,21 @@ Those results belong to the upstream authors and have not been reproduced here. 
 
 ### Measured on this repository
 
-`bench/` holds a selection benchmark that pays for a candidate pool once, labels every
-candidate with a hidden oracle, and reports random pass@1, verifier-selected, and oracle
-pass@N over the same pool. `bench/RESULTS.md` records what it measured here: a 4-candidate
-pool on a small task cost about $0.05 to $0.08 including verification and took 95s to 693s,
-23 of 24 candidates passed their oracle so most pools were saturated, and on the single
-discriminating pool the verifier ranked the failing candidate first. Those runs use small
-single-function fixtures, so they test the harness and the cost model rather than the
-method's published accuracy.
+`bench/` pays for candidate pools once, labels every candidate with a hidden oracle, then
+compares selection methods over the same stored pools. The strongest current fixed-pool
+results are:
+
+| Backend and setting | Verifier-selected | Random pass@1 | Oracle pass@4 | Scope |
+| --- | ---: | ---: | ---: | --- |
+| Logprob, 1 evaluation | 50.0% | 62.5% | 100% | 18 selections over two reused discriminating tasks |
+| Sampled Luna, 1 round | 83.3% | 37.5% | 100% | 18 selections over six deliberately retained discriminating tasks |
+| Sampled Luna, 3 rounds | 72.2% | 37.5% | 100% | Same six-task bank and 18 selections |
+
+These are harness measurements, not general coding-agent accuracy estimates. The task banks
+are small, reused, and intentionally discriminating. Repeated evaluation increased cost
+without improving selection on either bank. [`bench/RESULTS.md`](bench/RESULTS.md) records
+the exact source identities, models, cache state, token accounting, costs, exclusions, and
+raw artifact locations.
 
 ## Artifacts
 
@@ -232,33 +239,41 @@ Every run writes a durable directory, by default under `~/.omp/agent/best-of/run
     stderr.log        candidate stderr and patch capture errors
   candidate-2/ ...
   verifier-cache.json verifier score cache for the run
-  winner.patch        written only when --apply succeeds
-  result.json         winner, ranking, scores, usage, timings
+  winner.patch        written only when a non-empty patch is applied
+  result.json         versioned summary, selection, application, ranking, usage, timings
 ```
+
+Run and candidate directories use mode `0700`; artifact files use `0600`. `result.json`
+contains compact candidate summaries and relative artifact paths rather than full
+transcripts, patches, stderr, or temporary workspace paths.
 
 Losing candidates are kept, so a rejected patch can still be inspected, replayed, or applied by hand.
 
 ## Safety model
 
 - Each candidate gets an OMP-managed isolation workspace from the recorded clean baseline. OMP prefers the host's native copy-on-write backend and falls back to a Git worktree when necessary. This prevents repository patch collisions; it is not an OS sandbox or host-isolation boundary.
-- The run refuses to start from a dirty working tree.
-- Selection is the default. Without `--apply`, patches stay in the artifact directory.
-- Before applying, the parent `HEAD` and status must be byte-identical to preflight, otherwise the run reports that the winner was not applied.
+- The run refuses to start from a dirty working tree and rechecks the parent after generation and before application.
+- Selection is the default. `--no-verify` reports that no selection was performed; it never promotes the first surviving candidate.
+- Without `--apply`, patches stay in the artifact directory. `application.applied` is true only when a non-empty selected patch changes the checkout.
 - Applying uses `git apply --check` before the real apply, so a conflicting patch fails without partial writes.
 - Candidate agents do not commit, and the plugin never pushes, tags, or rewrites history.
+- Candidate and verifier subprocesses run in dedicated POSIX process groups. Timeout or caller cancellation sends `SIGTERM`, escalates to `SIGKILL`, waits for all candidate processes to settle, then cleans their workspaces.
 - Candidate agents run as headless OMP subprocesses in `yolo` approval mode with sessions and extensions disabled. They do not appear in Agent Hub or native subagent lifecycle surfaces, and they can technically access the host filesystem and network.
 
 ## Development
 
 ```bash
 bun install
-bun run check          # type check plus tests
+bun run check          # Biome, type check, catalog validation, and tests
+bun run smoke:package  # pack, install in a clean temp project, and launch CLI help
 bun run smoke:verifier # live verifier round trip through omp credentials, needs network
 bun run smoke:verifier <provider/model> # same, against another verifier you have credentials for
 bun bench/run.ts --help # selection benchmark, spends money on model calls
 ```
 
-`bun run check` is offline. The smoke script makes real verifier calls and is intended for confirming credentials and the Python bridge end to end.
+`bun run check` and `bun run smoke:package` are offline after dependencies are installed.
+The verifier smoke script makes real calls and confirms credentials and the Python bridge
+end to end.
 
 Layout:
 

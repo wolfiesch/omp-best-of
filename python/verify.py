@@ -25,6 +25,18 @@ def scale_letters() -> list[str]:
     return letters + [" " + c for c in letters]
 
 
+def probe_native(payload: dict) -> dict:
+    """Prove package import, endpoint authentication, and model routing cheaply."""
+    client = create_openai_client()
+    model = resolve_model(client, payload["model"])
+    client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": "Reply with one character."}],
+        max_tokens=1,
+    )
+    return {"ok": True}
+
+
 def probe(payload: dict) -> dict:
     """Sample the prefilled score position, so the caller can judge the endpoint.
 
@@ -81,6 +93,10 @@ def probe(payload: dict) -> dict:
 
 def main() -> None:
     payload = json.load(sys.stdin)
+    if "--probe-native" in sys.argv[1:]:
+        json.dump(probe_native(payload), sys.stdout)
+        sys.stdout.write("\n")
+        return
     if "--probe" in sys.argv[1:]:
         json.dump(probe(payload), sys.stdout)
         sys.stdout.write("\n")
