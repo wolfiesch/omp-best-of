@@ -31,12 +31,15 @@ async function waitForProcessExit(pid: number): Promise<boolean> {
 
 // These integration checks exercise the real OS signal and timer boundary; fake
 // timers cannot drive Bun.spawn process-group delivery.
-unixTest("times out and kills the subprocess process group", async () => {
+unixTest("kills the subprocess process group after its leader exits", async () => {
 	const started = Date.now();
-	const result = await runCommand(["bash", "-c", 'trap "" TERM; sleep 30 & child=$!; echo "$child"; wait'], {
-		timeoutMs: 50,
-		terminationGraceMs: 50,
-	});
+	const result = await runCommand(
+		["bash", "-c", `trap '' TERM; sleep 30 </dev/null >/dev/null 2>&1 & child=$!; trap 'echo "$child"; exit 0' TERM; wait`],
+		{
+			timeoutMs: 50,
+			terminationGraceMs: 50,
+		},
+	);
 
 	expect(result.timedOut).toBe(true);
 	expect(result.aborted).toBe(false);

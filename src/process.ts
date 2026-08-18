@@ -57,10 +57,18 @@ export async function runCommand(command: string[], options: CommandOptions = {}
 	let timedOut = false;
 	let aborted = false;
 	let timeoutTimer: NodeJS.Timeout | undefined;
-	let killTimer: NodeJS.Timeout | undefined;
+	let terminating = false;
+	let termination: Promise<void> | undefined;
 	const terminate = (): void => {
+		if (terminating) return;
+		terminating = true;
 		signalProcessTree(proc, "SIGTERM");
-		killTimer ??= setTimeout(() => signalProcessTree(proc, "SIGKILL"), options.terminationGraceMs ?? 2_000);
+		const { promise, resolve } = Promise.withResolvers<void>();
+		termination = promise;
+		setTimeout(() => {
+			signalProcessTree(proc, "SIGKILL");
+			resolve();
+		}, options.terminationGraceMs ?? 2_000);
 	};
 	const onAbort = (): void => {
 		aborted = true;
@@ -77,10 +85,10 @@ export async function runCommand(command: string[], options: CommandOptions = {}
 
 	try {
 		const [exitCode, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+		await termination;
 		return { exitCode, stdout, stderr, timedOut, aborted };
 	} finally {
 		clearTimeout(timeoutTimer);
-		clearTimeout(killTimer);
 		options.signal?.removeEventListener("abort", onAbort);
 	}
 }
