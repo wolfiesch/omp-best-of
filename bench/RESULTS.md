@@ -402,18 +402,19 @@ and three seeds:
 
 These runs retained 150 pairwise comparisons, 150 candidate audits, and 504 sandboxed probe
 results. Every one of the 75 first-pass audits retained at least one probe result; every one of
-the 75 second-pass audits retained at least three. Tool loops and compliance retries expanded
-the 300 retained audit/comparison records into 879 provider requests. Input comprised 29.88M
-cached and 12.02M uncached tokens; output was 216.2K tokens and reasoning was 98.1K tokens.
+the 75 second-pass audits retained at least three. The 300 retained audit/comparison records
+consumed 879 provider requests. The retained records do not attribute requests between tool
+loops and discarded audit attempts. Input comprised 29.88M cached and 12.02M uncached tokens;
+output was 216.2K tokens and reasoning was 98.1K tokens.
 Runtime accounting averaged $0.2175 per task selection. Subscription-routed accounting is not
 a per-token invoice.
 
-All six final runs used clean source `06eefab3726ef82d1100bec92a82a172aeddffc8`,
+All six scorecards record clean source `06eefab3726ef82d1100bec92a82a172aeddffc8`,
 OMP binary hash `a547f8fa4457e1f96886a7ece04a27dc110f80c29b395daeb223f4a98e802a24`,
-omp/17.3.4, Bun 1.3.14, and Linux x64 on the Hostinger VPS. Runs were sequential within each
-sweep; the JSON Patch and four-task sweeps overlapped. Each task used four verifier workers and
-a two-minute per-call timeout. External overall timeouts were 12 minutes for each JSON Patch
-run and 35 minutes for each four-task run. Generation was reused and not spent during ranking.
+omp/17.3.4, Bun 1.3.14, and Linux x64. Runs were sequential within each sweep; the JSON Patch
+and four-task sweeps overlapped. Each task records four verifier workers and a two-minute
+per-call timeout. Declared external overall timeouts were 12 minutes for each JSON Patch run
+and 35 minutes for each four-task run. Generation was reused and not spent during ranking.
 Cold and warm paths were not separated.
 
 Machine-readable aggregate: `bench/results/candidate-falsification-evidence.json`. Raw
