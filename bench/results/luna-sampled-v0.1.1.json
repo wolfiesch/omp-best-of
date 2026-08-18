@@ -1,0 +1,133 @@
+{
+  "claimScope": "Fixed discriminating-pool selection only; not a general end-to-end accuracy estimate.",
+  "source": {
+    "sourceHash": "23d783edb609a0ab6e09c1c93da06e8a83a3029a",
+    "builtHash": "a547f8fa4457e1f96886a7ece04a27dc110f80c29b395daeb223f4a98e802a24",
+    "buildMode": "local",
+    "ompVersion": "omp/17.3.4",
+    "bunVersion": "1.3.14",
+    "platform": "linux x64",
+    "machine": "Hostinger VPS"
+  },
+  "scenario": {
+    "verifier": "openai-codex/gpt-5.6-luna",
+    "backend": "sampled",
+    "verifierThinking": "low",
+    "verifierTimeout": "2m",
+    "maxVerifierWorkers": 4,
+    "schedule": "seeded oriented round-robin",
+    "seeds": [0, 1, 2],
+    "evaluationCounts": [1, 3],
+    "tasks": 6,
+    "candidatesPerTask": 4,
+    "pairwiseComparisonsPerTask": {
+      "oneEvaluation": 6,
+      "threeEvaluations": 18
+    },
+    "candidateLimit": "2m",
+    "oracleTimeoutMs": 90000,
+    "iterationsPerTask": 1,
+    "warmupsDiscarded": 0,
+    "buildReuse": "Candidate pools reused; verifier comparisons were live and uncached at the application level.",
+    "overallBatchTimeout": null,
+    "latencyClassification": "Live sequential re-ranking; cold and warm paths were not separated."
+  },
+  "poolIdentity": {
+    "selectionRule": "Use both discriminating DeepSeek pools; from the alternate pool use discriminating tasks not already represented.",
+    "randomPass1": 0.375,
+    "oraclePass4": 1.0,
+    "entries": [
+      { "taskId": "async-memoize", "sourceRun": "2026-08-18T06-24-28-540Z", "passed": 2, "poolSha256": "2c4b7ccd59b09ee0debf0f3fdeab88fa9f7bca70c0db2a5f2ede7b325421d562" },
+      { "taskId": "content-type", "sourceRun": "2026-08-18T06-24-28-540Z", "passed": 1, "poolSha256": "081c7f5f469c57da81fa0c914d9531fc835dda32b1a7d25db7a85b06fea24809" },
+      { "taskId": "http-range", "sourceRun": "2026-08-18T06-38-18-609Z", "passed": 3, "poolSha256": "e64249f6b4e1f4330086fadb7a492b274580733acf0f6f930a8d3aabc525c0ea" },
+      { "taskId": "event-emitter", "sourceRun": "2026-08-18T06-38-18-609Z", "passed": 1, "poolSha256": "ede20d76d72ece2bf82565d6d25d946b98f3d2d708bdf3b75f6cbff8b9c5565b" },
+      { "taskId": "interval-subtract", "sourceRun": "2026-08-18T06-38-18-609Z", "passed": 1, "poolSha256": "e718b9635b321c51637b6f990e2758d02906b425203499fc0287b1d3a0c642a7" },
+      { "taskId": "query-merge", "sourceRun": "2026-08-18T06-38-18-609Z", "passed": 1, "poolSha256": "b7fd9cb8cdc7e34c114da4c62642487cd7768572c91bff37d6b6220210ae7ce3" }
+    ]
+  },
+  "results": {
+    "oneEvaluation": {
+      "runDirectories": [
+        "2026-08-18T08-21-51-395Z",
+        "2026-08-18T08-22-55-164Z",
+        "2026-08-18T08-25-08-878Z",
+        "2026-08-18T08-26-17-567Z",
+        "2026-08-18T08-28-52-819Z",
+        "2026-08-18T08-29-51-658Z"
+      ],
+      "correctSelections": 15,
+      "selections": 18,
+      "accuracy": 0.8333333333333334,
+      "accuracyBySeed": [0.6666666666666666, 1.0, 0.8333333333333334],
+      "correctByTask": {
+        "async-memoize": "3/3",
+        "content-type": "2/3",
+        "event-emitter": "3/3",
+        "http-range": "3/3",
+        "interval-subtract": "2/3",
+        "query-merge": "2/3"
+      },
+      "comparisons": 108,
+      "providerRequests": 108,
+      "inputTokens": 5976594,
+      "cachedInputTokens": 1428480,
+      "uncachedInputTokens": 4548114,
+      "outputTokens": 38686,
+      "reasoningTokens": 27941,
+      "cacheHitRate": 0.23901238732294683,
+      "reportedCostUsd": 0.9846156000000003,
+      "meanCostPerTaskSelectionUsd": 0.05470086666666668,
+      "meanTaskWallClockSeconds": 32.63472222222222
+    },
+    "threeEvaluations": {
+      "runDirectories": [
+        "2026-08-18T08-31-57-421Z",
+        "2026-08-18T08-34-23-882Z",
+        "2026-08-18T08-39-45-684Z",
+        "2026-08-18T08-42-30-702Z",
+        "2026-08-18T08-47-33-513Z",
+        "2026-08-18T08-50-03-277Z"
+      ],
+      "correctSelections": 13,
+      "selections": 18,
+      "accuracy": 0.7222222222222222,
+      "accuracyBySeed": [0.6666666666666666, 0.8333333333333334, 0.6666666666666666],
+      "correctByTask": {
+        "async-memoize": "3/3",
+        "content-type": "0/3",
+        "event-emitter": "3/3",
+        "http-range": "1/3",
+        "interval-subtract": "3/3",
+        "query-merge": "3/3"
+      },
+      "comparisons": 324,
+      "providerRequests": 326,
+      "inputTokens": 18040413,
+      "cachedInputTokens": 5066240,
+      "uncachedInputTokens": 12974173,
+      "outputTokens": 114733,
+      "reasoningTokens": 81952,
+      "cacheHitRate": 0.2808272737436776,
+      "reportedCostUsd": 2.833839,
+      "meanCostPerTaskSelectionUsd": 0.1574355,
+      "meanTaskWallClockSeconds": 75.30727777777778
+    },
+    "pairedDifference": {
+      "correctSelections": -2,
+      "accuracyPoints": -0.11111111111111116,
+      "costMultiplier": 2.8781171047868828,
+      "inputTokenMultiplier": 3.0185107102808053,
+      "wallClockMultiplier": 2.3075813933693663,
+      "changedWinners": 6,
+      "changesToPassing": 2,
+      "changesToFailing": 4
+    },
+    "knownSuccessfulRunCostUsd": 3.8184546000000004
+  },
+  "exclusions": [
+    "Earlier local exploratory sweeps are not combined with this VPS comparison.",
+    "An initial high-concurrency local launch was excluded after OMP startup contention caused process timeouts.",
+    "An initial VPS attempt was stopped because scorecards resolved the PATH omp binary instead of OMP_BEST_OF_OMP_BIN; its metadata was invalid. The source fix is commit 23d783e.",
+    "Partial usage from excluded or interrupted attempts is unknown and is not included in knownSuccessfulRunCostUsd."
+  ]
+}

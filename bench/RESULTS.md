@@ -221,3 +221,57 @@ Machine-readable aggregate: `bench/results/expanded-pools-v0.1.1.json`. Local ra
 artifacts remain under `bench/results/2026-08-18T06-24-28-540Z/` and
 `bench/results/2026-08-18T06-38-18-609Z/`. The three local incomplete verifier attempts
 remain under `bench/results/2026-08-18T06-38-26-{976,980,993}Z/`.
+
+## Luna sampled verifier on the VPS
+
+The subscription-backed sampled verifier was measured on the fixed six-task selection bank
+above. Every task has four stored candidates, at least one passing and one failing candidate,
+random pass@1 of 37.5%, and oracle pass@4 of 100%. Candidate generation was not rerun.
+
+Three seeds compared one complete pairwise round with three complete rounds. Each four-way
+round contains six live pairwise judgments:
+
+| Pairwise rounds | Selections | Verifier-selected | Comparisons | Input tokens | Reported verifier cost | Mean task wall clock |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 18 | 83.3% | 108 | 5.98M | $0.9846 | 32.6s |
+| 3 | 18 | 72.2% | 324 | 18.04M | $2.8338 | 75.3s |
+
+The one-round selector produced 15 correct selections out of 18, compared with the fixed
+bank's 37.5% random baseline. Results varied by seed: 66.7%, 100%, and 83.3%. Per-task
+selection counts show where the remaining uncertainty sits:
+
+| Task | One round | Three rounds |
+| --- | ---: | ---: |
+| async-memoize | 3/3 | 3/3 |
+| content-type | 2/3 | 0/3 |
+| event-emitter | 3/3 | 3/3 |
+| http-range | 3/3 | 1/3 |
+| interval-subtract | 2/3 | 3/3 |
+| query-merge | 2/3 | 3/3 |
+
+Three rounds cost 2.88 times as much, used 3.02 times as many input tokens, and took 2.31
+times as much wall-clock time. They changed six winners: two changes recovered passing
+candidates and four replaced passing candidates with failures. On this pool, repeated
+sampling did not improve selection and reduced aggregate accuracy by 11.1 percentage points.
+The default should remain one round for this harness. These results do not support paying for
+three rounds on this bank. Eighteen paired selections on a deliberately discriminating bank
+do not estimate general coding-agent accuracy.
+
+All comparison runs used clean source
+`23d783edb609a0ab6e09c1c93da06e8a83a3029a`, OMP binary hash
+`a547f8fa4457e1f96886a7ece04a27dc110f80c29b395daeb223f4a98e802a24`,
+omp/17.3.4, Bun 1.3.14, and Linux x64 on the Hostinger VPS. The verifier was
+`openai-codex/gpt-5.6-luna` at low thinking with four concurrent workers and a two-minute
+per-call timeout. The batch ran sequentially without an overall timeout; cold and warm paths
+were not separated, so latency numbers describe only this live reranking scenario. Candidate
+pools were reused; verifier comparisons were live. Reported cost is OMP runtime accounting
+for subscription-routed usage, not a per-token invoice. Successful
+comparison runs accounted for $3.8185. Partial usage from interrupted exploratory attempts is
+unknown and excluded.
+
+Machine-readable aggregate: `bench/results/luna-sampled-v0.1.1.json`. Raw scorecards are
+under the twelve run directories named in that aggregate. An initial concurrent local launch
+was excluded after OMP startup contention caused timeouts. An initial VPS launch was also
+excluded because its scorecards captured the PATH OMP binary rather than the overridden
+binary actually used for judgments; commit `23d783e` corrected that metadata before this
+sweep.
