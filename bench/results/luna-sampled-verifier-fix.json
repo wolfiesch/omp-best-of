@@ -1,7 +1,7 @@
 {
   "status": "superseded",
-  "claimScope": "Diagnostic only. Excluded because identity was captured after execution and the content-type oracle omitted an explicit control-character contract.",
-  "supersededBy": "A clean five-task rerank excluding content-type, whose saved pool has no fully compliant candidate under the corrected oracle.",
+  "claimScope": "Diagnostic only. Excluded because identity was captured after execution and two fixture oracles omitted explicit task contracts.",
+  "supersededBy": "A clean four-task rerank excluding content-type and http-range, whose saved pools have no fully compliant candidate under the corrected oracles.",
   "source": {
     "sourceHash": "3861cf672384bf529c549a2a5afdf3366dbf00c8",
     "sourceDirty": false,

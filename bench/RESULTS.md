@@ -284,10 +284,11 @@ with weakest head-to-head probability and then expected probability as tie-break
 
 The first six-task sweep reported 18/18 oracle-labeled selections, but it is excluded from claims:
 benchmark identity was captured after execution. A repeat after fixing identity capture selected
-16/18 oracle-labeled winners and exposed a separate fixture defect. The `content-type` oracle did
-not test its explicit control-character requirement. Rescoring all four saved candidates against
-the corrected oracle produced four failures; the pool therefore has no valid oracle pass@4 and
-cannot measure selection accuracy.
+16/18 oracle-labeled winners and exposed fixture defects. The `content-type` oracle omitted
+its explicit control-character requirement, and the `http-range` oracle did not reject unsafe
+end and suffix decimals or non-horizontal whitespace. Rescoring each saved pool against the
+corrected oracle produced no passing candidate in either pool; neither can measure selection
+accuracy.
 
 The superseded aggregate remains at `bench/results/luna-sampled-verifier-fix.json` for diagnosis.
 It does not support a verifier-accuracy or latency claim.

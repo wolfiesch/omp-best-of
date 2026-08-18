@@ -17,3 +17,12 @@ test("handles empty representations", () => {
 	expect(parseRange("bytes=-1", 0)).toBeNull();
 });
 test("does not lose integer precision", () => expect(parseRange("bytes=9007199254740993-", 10)).toBeNull());
+test("rejects unsafe decimal values", () => {
+	expect(parseRange("bytes=0-9007199254740993", 10)).toBeNull();
+	expect(parseRange("bytes=-9007199254740993", 10)).toBeNull();
+	expect(parseRange("bytes=0-1", 9007199254740992)).toBeNull();
+});
+test("rejects non-horizontal whitespace", () => {
+	expect(parseRange("\nbytes=1-2", 10)).toBeNull();
+	expect(parseRange("bytes=1-2\r", 10)).toBeNull();
+});

@@ -6,9 +6,9 @@ function integer(text) {
 }
 export function parseRange(header, size) {
 	if (!Number.isSafeInteger(size) || size <= 0) return null;
-	const match = /^\s*bytes=([^,]+)\s*$/.exec(header);
+	const match = /^[ \t]*bytes=([^,\r\n]+?)[ \t]*$/.exec(header);
 	if (!match) return null;
-	const parts = match[1].trim().split("-");
+	const parts = match[1].replace(/^[ \t]+|[ \t]+$/g, "").split("-");
 	if (parts.length !== 2) return null;
 	const [left, right] = parts;
 	if (left === "") {
