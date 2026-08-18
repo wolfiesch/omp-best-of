@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
 const MAX_OUTPUT_CHARS = 12_000;
+const MAX_PREFLIGHT_DIAGNOSTIC_CHARS = 1_000;
 const DEFAULT_TIMEOUT_MS = 20_000;
 
 interface AuditExecution {
@@ -19,6 +20,14 @@ async function exists(file: string): Promise<boolean> {
 	);
 }
 
+function boundedDiagnostic(output: string): string {
+	return output
+		.trim()
+		.replace(/\/[^\s"'`]+/g, "<path>")
+		.replace(/\s+/g, " ")
+		.slice(0, MAX_PREFLIGHT_DIAGNOSTIC_CHARS);
+}
+
 async function sandboxCommand(cwd: string, scratchDir: string, command: string[]): Promise<{ executable: string; args: string[] }> {
 	const requested = command[0];
 	const found = path.isAbsolute(requested) ? requested : Bun.which(requested);
@@ -26,12 +35,14 @@ async function sandboxCommand(cwd: string, scratchDir: string, command: string[]
 	const resolved = await realpath(found);
 	const args = command.slice(1);
 	if (process.platform === "linux") {
-		const bwrap = Bun.which("bwrap");
+		const bwrap = Bun.which("bwrap", { PATH: process.env.PATH ?? "" });
 		if (!bwrap) throw new Error("audit_probe requires bubblewrap on Linux");
+		const runtimeDirectory = path.dirname(resolved);
+		const sandboxRuntimeDirectory = "/audit-runtime";
+		const sandboxExecutable = path.posix.join(sandboxRuntimeDirectory, path.basename(resolved));
 		const mounts = ["/usr", "/bin", "/lib", "/lib64"]
-			.filter((mount) => mount !== path.dirname(resolved))
+			.filter((mount) => mount !== runtimeDirectory)
 			.flatMap((mount) => ["--ro-bind-try", mount, mount]);
-		const sandboxExecutable = "/audit-bin/executable";
 		return {
 			executable: bwrap,
 			args: [
@@ -41,10 +52,10 @@ async function sandboxCommand(cwd: string, scratchDir: string, command: string[]
 				"--clearenv",
 				...mounts,
 				"--dir",
-				"/audit-bin",
+				sandboxRuntimeDirectory,
 				"--ro-bind",
-				resolved,
-				sandboxExecutable,
+				runtimeDirectory,
+				sandboxRuntimeDirectory,
 				"--ro-bind",
 				cwd,
 				"/workspace",
@@ -65,7 +76,7 @@ async function sandboxCommand(cwd: string, scratchDir: string, command: string[]
 				"/tmp",
 				"--setenv",
 				"PATH",
-				"/audit-bin:/usr/bin:/bin",
+				"/audit-runtime:/usr/bin:/bin",
 				"--setenv",
 				"LANG",
 				"C.UTF-8",
@@ -168,7 +179,11 @@ export async function assertAuditSandboxSupported(cwd: string, signal?: AbortSig
 		signal,
 	);
 	if (result.exitCode !== 0 || result.stdout !== "audit-probe-sandbox-ok\n") {
-		throw new Error("audit_probe sandbox preflight failed");
+		const diagnostic = boundedDiagnostic(`${result.stderr}\n${result.stdout}`);
+		const details = diagnostic ? ` Diagnostic: ${diagnostic}` : "";
+		throw new Error(
+			`audit_probe sandbox preflight failed (exit code ${result.exitCode}). Ensure bubblewrap can create an isolated namespace and the Bun runtime is executable.${details}`,
+		);
 	}
 }
 

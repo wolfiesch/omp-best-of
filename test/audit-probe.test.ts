@@ -154,7 +154,8 @@ sandboxTest(
 	async () => {
 		await withWorkspace(async (cwd) => {
 			await expectScratchDirectoriesRemoved(async () => {
-				await expect(execute(cwd, [process.execPath, "-e", "await Bun.sleep(10_000)"], 50)).rejects.toThrow(
+				// This integration probe needs a real child process to remain alive until the sandbox timeout terminates it.
+				await expect(execute(cwd, [process.execPath, "-e", "setInterval(() => {}, 1_000)"], 50)).rejects.toThrow(
 					"audit_probe timed out after 50ms",
 				);
 			});
