@@ -344,7 +344,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 						thinking: options.verifierThinking,
 						preflightUsage: sampledPreflightUsage,
 						cwd: root,
-						candidateCwds: eligible.map(candidate => candidate.worktree),
+						candidateCwds: eligible.map((candidate) => candidate.workspace),
 					});
 				} else {
 					if (!endpoint) throw new Error("Verifier endpoint was not resolved");

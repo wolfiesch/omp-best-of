@@ -1,19 +1,19 @@
+import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, test } from "bun:test";
 import { composeSampledVerifierEvidence, extractRecordedToolEvidence } from "../src/runner";
 import {
 	aggregatePairwiseJudgments,
 	buildCandidateAuditPrompt,
-	combineCandidateAudits,
-	extractAuditProbes,
-	verifyCandidatesSampled,
 	buildPairSchedule,
 	buildPairwisePrompt,
+	combineCandidateAudits,
+	extractAuditProbes,
 	parseCandidateAudit,
 	parsePairwiseJudgment,
 	sampledVerifierUsage,
+	verifyCandidatesSampled,
 } from "../src/sampled-verifier";
 
 describe("sampled verifier pair schedule", () => {
@@ -50,7 +50,9 @@ describe("sampled verifier response parsing", () => {
 	});
 
 	test("reads bounded candidate falsification audits", () => {
-		expect(parseCandidateAudit('{"probabilityPass":35,"findings":["equal(2, 3) returns true"],"summary":"primitive base case fails"}')).toEqual({
+		expect(
+			parseCandidateAudit('{"probabilityPass":35,"findings":["equal(2, 3) returns true"],"summary":"primitive base case fails"}'),
+		).toEqual({
 			probabilityPass: 35,
 			findings: ["equal(2, 3) returns true"],
 			summary: "primitive base case fails",
@@ -103,15 +105,17 @@ describe("sampled verifier prompt", () => {
 	});
 
 	test("combines repeated audits conservatively", () => {
-		expect(combineCandidateAudits([
-			{ probabilityPass: 96, findings: [], summary: "No defect found" },
-			{ probabilityPass: 25, findings: ["equal(2, 3) returns true"], summary: "Primitive branch fails" },
-		])).toEqual({
+		expect(
+			combineCandidateAudits([
+				{ probabilityPass: 96, findings: [], summary: "No defect found" },
+				{ probabilityPass: 25, findings: ["equal(2, 3) returns true"], summary: "Primitive branch fails" },
+			]),
+		).toEqual({
 			probabilityPass: 25,
 			findings: ["equal(2, 3) returns true"],
 			summary: "Pass 1: No defect found Pass 2: Primitive branch fails",
 		});
-});
+	});
 });
 
 test("audits candidate workspaces with read-only execution tools", async () => {
@@ -123,7 +127,9 @@ test("audits candidate workspaces with read-only execution tools", async () => {
 	try {
 		await Promise.all([mkdir(candidateA), mkdir(candidateB)]);
 		await Promise.all([Bun.write(path.join(candidateA, "code.js"), "A"), Bun.write(path.join(candidateB, "code.js"), "B")]);
-		await Bun.write(omp, `#!/usr/bin/env bun
+		await Bun.write(
+			omp,
+			`#!/usr/bin/env bun
 import { appendFile } from "node:fs/promises";
 const prompt = process.argv.at(-1);
 const cwd = process.argv[process.argv.indexOf("--cwd") + 1];
@@ -144,7 +150,8 @@ console.log(JSON.stringify({
   type: "message_end",
   message: { role: "assistant", content: [{ type: "text", text }], usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } } },
 }));
-`);
+`,
+		);
 		await chmod(omp, 0o755);
 		await verifyCandidatesSampled({
 			problem: "Choose",
@@ -158,12 +165,15 @@ console.log(JSON.stringify({
 			cwd: root,
 			ompBin: omp,
 		});
-		const calls = (await Bun.file(log).text()).trim().split("\n").map(line => JSON.parse(line));
-		const audits = calls.filter(call => call.audit);
+		const calls = (await Bun.file(log).text())
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line));
+		const audits = calls.filter((call) => call.audit);
 		expect(audits).toHaveLength(4);
-		expect(audits.every(call => call.tools === "audit_probe" && !call.noTools)).toBe(true);
-		expect(audits.map(call => call.cwd).sort()).toEqual([candidateA, candidateA, candidateB, candidateB].sort());
-		const pairs = calls.filter(call => !call.audit);
+		expect(audits.every((call) => call.tools === "audit_probe" && !call.noTools)).toBe(true);
+		expect(audits.map((call) => call.cwd).sort()).toEqual([candidateA, candidateA, candidateB, candidateB].sort());
+		const pairs = calls.filter((call) => !call.audit);
 		expect(pairs).toHaveLength(1);
 		expect(pairs[0]).toMatchObject({ cwd: root, tools: "", noTools: true });
 	} finally {
@@ -178,7 +188,9 @@ test("rejects workspace audits that skip required probes", async () => {
 	const omp = path.join(root, "mock-omp.ts");
 	try {
 		await Promise.all([mkdir(candidateA), mkdir(candidateB)]);
-		await Bun.write(omp, `#!/usr/bin/env bun
+		await Bun.write(
+			omp,
+			`#!/usr/bin/env bun
 const prompt = process.argv.at(-1);
 const audit = prompt.includes("Audit one candidate independently");
 const text = audit
@@ -188,20 +200,23 @@ console.log(JSON.stringify({
   type: "message_end",
   message: { role: "assistant", content: [{ type: "text", text }], usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } } },
 }));
-`);
+`,
+		);
 		await chmod(omp, 0o755);
-		await expect(verifyCandidatesSampled({
-			problem: "Choose",
-			candidates: ["A", "B"],
-			candidateCwds: [candidateA, candidateB],
-			criteria: { Correctness: "Works" },
-			model: "test/model",
-			nEvaluations: 1,
-			seed: 0,
-			cachePath: path.join(root, "cache.json"),
-			cwd: root,
-			ompBin: omp,
-		})).rejects.toThrow("required 1 executable probe");
+		await expect(
+			verifyCandidatesSampled({
+				problem: "Choose",
+				candidates: ["A", "B"],
+				candidateCwds: [candidateA, candidateB],
+				criteria: { Correctness: "Works" },
+				model: "test/model",
+				nEvaluations: 1,
+				seed: 0,
+				cachePath: path.join(root, "cache.json"),
+				cwd: root,
+				ompBin: omp,
+			}),
+		).rejects.toThrow("required 1 executable probe");
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
@@ -262,10 +277,7 @@ test("reads probe status only from captured tool results", () => {
 		"exit_code=1",
 		"stderr:",
 	].join("\n");
-	expect(extractAuditProbes(evidence)).toEqual([
-		"exit_code=1\nstdout:\n\nstderr:",
-		"exit_code=0\nstdout:\nexit_code=1\nstderr:",
-	]);
+	expect(extractAuditProbes(evidence)).toEqual(["exit_code=1\nstdout:\n\nstderr:", "exit_code=0\nstdout:\nexit_code=1\nstderr:"]);
 });
 
 describe("sampled verifier aggregation", () => {

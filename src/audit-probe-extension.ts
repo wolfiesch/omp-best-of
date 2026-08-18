@@ -7,7 +7,10 @@ const MAX_OUTPUT_CHARS = 12_000;
 const DEFAULT_TIMEOUT_MS = 20_000;
 
 async function exists(file: string): Promise<boolean> {
-	return access(file).then(() => true, () => false);
+	return access(file).then(
+		() => true,
+		() => false,
+	);
 }
 
 async function sandboxCommand(cwd: string, scratchDir: string, command: string[]): Promise<{ executable: string; args: string[] }> {
@@ -20,8 +23,8 @@ async function sandboxCommand(cwd: string, scratchDir: string, command: string[]
 		const bwrap = Bun.which("bwrap");
 		if (!bwrap) throw new Error("audit_probe requires bubblewrap on Linux");
 		const mounts = ["/usr", "/bin", "/lib", "/lib64"]
-			.filter(mount => mount !== path.dirname(resolved))
-			.flatMap(mount => ["--ro-bind-try", mount, mount]);
+			.filter((mount) => mount !== path.dirname(resolved))
+			.flatMap((mount) => ["--ro-bind-try", mount, mount]);
 		const sandboxExecutable = "/audit-bin/executable";
 		return {
 			executable: bwrap,
@@ -31,17 +34,34 @@ async function sandboxCommand(cwd: string, scratchDir: string, command: string[]
 				"--unshare-all",
 				"--clearenv",
 				...mounts,
-				"--dir", "/audit-bin",
-				"--ro-bind", resolved, sandboxExecutable,
-				"--ro-bind", cwd, "/workspace",
-				"--tmpfs", "/tmp",
-				"--proc", "/proc",
-				"--dev", "/dev",
-				"--setenv", "HOME", "/tmp",
-				"--setenv", "TMPDIR", "/tmp",
-				"--setenv", "PATH", "/audit-bin:/usr/bin:/bin",
-				"--setenv", "LANG", "C.UTF-8",
-				"--chdir", "/workspace",
+				"--dir",
+				"/audit-bin",
+				"--ro-bind",
+				resolved,
+				sandboxExecutable,
+				"--ro-bind",
+				cwd,
+				"/workspace",
+				"--tmpfs",
+				"/tmp",
+				"--proc",
+				"/proc",
+				"--dev",
+				"/dev",
+				"--setenv",
+				"HOME",
+				"/tmp",
+				"--setenv",
+				"TMPDIR",
+				"/tmp",
+				"--setenv",
+				"PATH",
+				"/audit-bin:/usr/bin:/bin",
+				"--setenv",
+				"LANG",
+				"C.UTF-8",
+				"--chdir",
+				"/workspace",
 				"--",
 				sandboxExecutable,
 				...args,
@@ -50,11 +70,11 @@ async function sandboxCommand(cwd: string, scratchDir: string, command: string[]
 	}
 	if (process.platform === "darwin") {
 		const sandboxExec = "/usr/bin/sandbox-exec";
-		const escape = (value: string) => value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-		const escapedCwd = escape(cwd);
-		const escapedExecutable = escape(resolved);
-		const escapedHome = escape(os.homedir());
-		const escapedScratch = escape(scratchDir);
+		const escapeProfileString = (value: string) => value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+		const escapedCwd = escapeProfileString(cwd);
+		const escapedExecutable = escapeProfileString(resolved);
+		const escapedHome = escapeProfileString(os.homedir());
+		const escapedScratch = escapeProfileString(scratchDir);
 		const profile = [
 			"(version 1)",
 			"(allow default)",
@@ -78,10 +98,11 @@ export default function auditProbeExtension(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "audit_probe",
 		label: "Sandboxed audit probe",
-		description: "Run one command against the candidate workspace in an OS sandbox. The workspace is read-only, user-home data and credentials are unavailable, network is disabled, and only a private scratch directory is writable. Pass argv directly without shell syntax.",
+		description:
+			"Run one command against the candidate workspace in an OS sandbox. The workspace is read-only, user-home data and credentials are unavailable, network is disabled, and only a private scratch directory is writable. Pass argv directly without shell syntax.",
 		approval: "exec",
 		parameters: z.object({
-			command: z.array(z.string()).min(1).max(64).describe("Command argv, for example [\"bun\",\"-e\",\"console.log(1+1)\"]"),
+			command: z.array(z.string()).min(1).max(64).describe('Command argv, for example ["bun","-e","console.log(1+1)"]'),
 			timeoutMs: z.number().int().min(1).max(30_000).optional(),
 		}),
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {

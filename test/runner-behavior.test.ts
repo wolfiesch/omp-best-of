@@ -63,14 +63,27 @@ async function withRunnerEnvironment(temporaryRoot: string, omp: string, callbac
 	}
 }
 
-const messageEvent = `console.log(JSON.stringify({
+const messageEvent = `
+const mockAudit = process.argv.includes("--tools");
+const mockPair = process.argv.includes("--no-tools");
+const mockUsage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } };
+const mockEmit = (role, content, usage) => console.log(JSON.stringify({
 	type: "message_end",
-	message: {
-		role: "assistant",
-		content: [{ type: "text", text: process.argv.includes("--no-tools") ? '{"probabilityA": 100, "reason": "A adds."}' : "done" }],
-		usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } },
-	},
-}));`;
+	message: { role, content, ...(usage ? { usage } : {}) },
+}));
+if (mockAudit) {
+	for (let index = 0; index < 3; index += 1) {
+		mockEmit("assistant", [{ type: "toolCall", name: "audit_probe", arguments: { command: ["bun", "-e", "console.log(1)"] } }], mockUsage);
+		mockEmit("toolResult", [{ type: "text", text: "exit_code=0\\nstdout:\\n1\\nstderr:\\n" }]);
+	}
+}
+const mockResponse = mockAudit
+	? '{"probabilityPass": 90, "findings": [], "summary": "checked"}'
+	: mockPair
+		? '{"probabilityA": 100, "reason": "A adds."}'
+		: "done";
+mockEmit("assistant", [{ type: "text", text: mockResponse }], mockUsage);
+`;
 
 test("validates programmatic options before repository or verifier preflight", async () => {
 	await expect(runBestOf({ ...options("/does/not-exist"), maxTime: "nonsense" })).rejects.toThrow("Invalid max time: nonsense");
