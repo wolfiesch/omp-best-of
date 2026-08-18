@@ -1,0 +1,65 @@
+name: Bug report
+description: A run behaved incorrectly, failed, or produced the wrong selection
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove absolute home paths, credentials, and private repository content before pasting output.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: omp-version
+    attributes:
+      label: Oh My Pi version
+      description: Output of `omp --version`
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and Bun version
+      placeholder: "macOS 15 arm64, Bun 1.3.14"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: The exact `/best-of` or `omp-best-of` invocation, with the task text redacted if needed
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the error message and the reported phase, such as preparing, generating, verifying, or applying
+    validations:
+      required: true
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Run evidence
+      description: |
+        The `runId` and any relevant excerpt from `result.json` or `stderr.log`. Do not attach full transcripts if they contain private code.
+      render: text
+  - type: checkboxes
+    id: state
+    attributes:
+      label: Preconditions
+      options:
+        - label: The working tree was clean when the run started
+        - label: "`omp plugin doctor omp-best-of` reports no errors"
+        - label: The verifier credential is available through `omp token deepseek` or `DEEPSEEK_API_KEY`

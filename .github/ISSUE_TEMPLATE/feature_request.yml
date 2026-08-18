@@ -1,0 +1,41 @@
+name: Feature request
+description: Propose a change to orchestration, safety, reporting, or the command surface
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Scoring lives in the upstream `llm-verifier` package. Changes to the verification algorithm itself belong in
+        [llm-as-a-verifier](https://github.com/llm-as-a-verifier/llm-as-a-verifier), not here. See CONTRIBUTING.md for scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What does a run make hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The behavior you want, including the flag or output shape if that applies
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing flags, environment overrides, or workflows you already tried
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Candidate orchestration and isolation
+        - Patch application and safety
+        - Verifier configuration
+        - Reporting, artifacts, and accounting
+        - Install and packaging
+        - Documentation
+    validations:
+      required: true

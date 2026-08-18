@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Verification algorithm and llm-verifier package
+    url: https://github.com/llm-as-a-verifier/llm-as-a-verifier/issues
+    about: Scoring, tournament behavior, and Python package problems belong upstream.
+  - name: Oh My Pi runtime
+    url: https://github.com/can1357/oh-my-pi/issues
+    about: Extension API, model catalog, credential, and CLI problems belong in Oh My Pi.
+  - name: Security vulnerability
+    url: https://github.com/wolfiesch/omp-best-of/security/advisories/new
+    about: Report isolation, patch-gate, or credential-handling defects privately.

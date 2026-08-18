@@ -1,19 +1,32 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "omp-best-of",
-  "owner": {
-    "name": "OMP Best Of contributors"
-  },
-  "metadata": {
-    "description": "Best-of-N coding-agent selection for Oh My Pi",
-    "version": "0.1.0"
-  },
-  "plugins": [
-    {
-      "name": "best-of",
-      "description": "Run isolated coding agents and select the strongest patch with LLM-as-a-Verifier",
-      "source": ".",
-      "category": "development"
-    }
-  ]
+	"$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+	"name": "omp-best-of",
+	"owner": {
+		"name": "Wolfgang Schoenberger"
+	},
+	"metadata": {
+		"description": "Best-of-N coding-agent selection for Oh My Pi",
+		"version": "0.1.0"
+	},
+	"plugins": [
+		{
+			"name": "best-of",
+			"description": "Run isolated coding agents and select the strongest patch with LLM-as-a-Verifier",
+			"source": "./",
+			"version": "0.1.0",
+			"author": {
+				"name": "Wolfgang Schoenberger"
+			},
+			"homepage": "https://github.com/wolfiesch/omp-best-of",
+			"repository": "https://github.com/wolfiesch/omp-best-of",
+			"license": "MIT",
+			"category": "development",
+			"keywords": [
+				"best-of-n",
+				"llm-as-a-verifier",
+				"test-time-scaling",
+				"git-worktree"
+			]
+		}
+	]
 }
