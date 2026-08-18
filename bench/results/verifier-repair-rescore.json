@@ -1,0 +1,251 @@
+{
+  "sourceHash": "35f8df6495cba10c9c0c7173da83e9f0304e17c0",
+  "sourceDirty": false,
+  "generatedAt": "2026-08-18T11:22:20.198Z",
+  "scorer": "bench/oracle.ts scoreCandidate",
+  "tasks": [
+    {
+      "taskId": "async-memoize",
+      "sourceRun": "2026-08-18T06-24-28-540Z",
+      "poolPath": "bench/results/2026-08-18T06-24-28-540Z/pool/async-memoize.json",
+      "poolSha256": "2c4b7ccd59b09ee0debf0f3fdeab88fa9f7bca70c0db2a5f2ede7b325421d562",
+      "taskSha256": "a730a05b055bcf9127875fcba5048a650a04ea3fc94a270c1871b7e942537901",
+      "oracleSha256": "5971fde8e361b4beea593f560e51f8683a725db059b474c09ccd064b150aeb5c",
+      "candidates": [
+        {
+          "index": 0,
+          "patchSha256": "f625576804d92a572422da6072e93b12304d577be4ac26e3cb8cf3841c723557",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBe(expected) |  6 pass |  1 fail"
+        },
+        {
+          "index": 1,
+          "patchSha256": "6723c912a91246563a4fcb13b4f7c414aed181e41587557d4c4d573182c67e1d",
+          "storedPassed": true,
+          "rescoredPassed": true,
+          "detail": "7 pass |  0 fail"
+        },
+        {
+          "index": 2,
+          "patchSha256": "550a8dd5c271e5b13ad2a5bf9a2971a8cffab4274fa614e10d19ae4016b18968",
+          "storedPassed": true,
+          "rescoredPassed": true,
+          "detail": "7 pass |  0 fail"
+        },
+        {
+          "index": 3,
+          "patchSha256": "9032835076bfe2f718dfb9506acc22ef6752fd0303aead458caaadcd0ef70558",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBe(expected) |  6 pass |  1 fail"
+        }
+      ],
+      "passingCandidates": [
+        1,
+        2
+      ]
+    },
+    {
+      "taskId": "content-type",
+      "sourceRun": "2026-08-18T06-24-28-540Z",
+      "poolPath": "bench/results/2026-08-18T06-24-28-540Z/pool/content-type.json",
+      "poolSha256": "081c7f5f469c57da81fa0c914d9531fc835dda32b1a7d25db7a85b06fea24809",
+      "taskSha256": "43ce26cf24ef80f2a77a05839b8acd8f5d512b19d37cdddd38083fda89f0b4f2",
+      "oracleSha256": "3dd10db916aeffb904864cfded908c2ee4664e122368c6561c70d7c9baf8de25",
+      "candidates": [
+        {
+          "index": 0,
+          "patchSha256": "e6171ef7fae5d8ed996641e6b9e9b42da05d0e09f90051f4e07ee33c5338238c",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBe(expected) | error: expect(received).toBeNull() |  6 pass |  2 fail"
+        },
+        {
+          "index": 1,
+          "patchSha256": "db530399e93b39b0346466d6cf9975bc32f17418054cf865ab22352443893ae9",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBe(expected) | error: expect(received).toBeNull() |  6 pass |  2 fail"
+        },
+        {
+          "index": 2,
+          "patchSha256": "0c9fe30dba60862f1b43cf26e7035aea3070378d2bf25cde0d83354f696e1ad3",
+          "storedPassed": true,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBeNull() |  7 pass |  1 fail"
+        },
+        {
+          "index": 3,
+          "patchSha256": "4b628a27b3fed977b5c41c3dcffd4625f86dd5e5604e0f8dc08c31a8a24a0e2e",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBe(expected) | error: expect(received).toBeNull() |  6 pass |  2 fail"
+        }
+      ],
+      "passingCandidates": []
+    },
+    {
+      "taskId": "event-emitter",
+      "sourceRun": "2026-08-18T06-38-18-609Z",
+      "poolPath": "bench/results/2026-08-18T06-38-18-609Z/pool/event-emitter.json",
+      "poolSha256": "ede20d76d72ece2bf82565d6d25d946b98f3d2d708bdf3b75f6cbff8b9c5565b",
+      "taskSha256": "2333a7c06105c3f5d0ca76e284b1be9abb8dacb049a04b607741697d79180a64",
+      "oracleSha256": "993a18a19bc698d3b6c91977e9c7e9214b1aaa4a225c6acfb8a7599ef6f6ce40",
+      "candidates": [
+        {
+          "index": 0,
+          "patchSha256": "27cb3833e24d8f3e2eb0b4df0eae6922915327185042ff848d2912ac6a5fdb9a",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBe(expected) |  7 pass |  1 fail"
+        },
+        {
+          "index": 1,
+          "patchSha256": "77aa95042ca862fdab2485ce68736f719528b6b25b6bf8ce086b013a3b321f22",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBe(expected) | error: expect(received).toBe(expected) |  6 pass |  2 fail"
+        },
+        {
+          "index": 2,
+          "patchSha256": "e54d7893f945e644abfb98cd63fa599103bb787f56134d1427941592ef64f7e0",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBe(expected) |  7 pass |  1 fail"
+        },
+        {
+          "index": 3,
+          "patchSha256": "e69cc301140b43d47a6e80c2b8ba5d6298bc8bf58057eed6d6d701973db689e6",
+          "storedPassed": true,
+          "rescoredPassed": true,
+          "detail": "8 pass |  0 fail"
+        }
+      ],
+      "passingCandidates": [
+        3
+      ]
+    },
+    {
+      "taskId": "http-range",
+      "sourceRun": "2026-08-18T06-38-18-609Z",
+      "poolPath": "bench/results/2026-08-18T06-38-18-609Z/pool/http-range.json",
+      "poolSha256": "e64249f6b4e1f4330086fadb7a492b274580733acf0f6f930a8d3aabc525c0ea",
+      "taskSha256": "704ecbec216185f53a1c2513e728436015687e52ee84cae14f73b67b9b865b77",
+      "oracleSha256": "31065d45b279806f8efc2e4202e7619233307801646090b51181dac3720e00dd",
+      "candidates": [
+        {
+          "index": 0,
+          "patchSha256": "293ecfd2b182c180ce1d86f8bfba53390e6f56df603438c0bcea615920cdd10d",
+          "storedPassed": true,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBeNull() | error: expect(received).toBeNull() |  8 pass |  2 fail"
+        },
+        {
+          "index": 1,
+          "patchSha256": "550f5dc95d5e674fc7581f135016f88d212d5fc55b6d834e82152925046327e0",
+          "storedPassed": true,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBeNull() | error: expect(received).toBeNull() |  8 pass |  2 fail"
+        },
+        {
+          "index": 2,
+          "patchSha256": "0f114fbcc1a4954d14c7cb01b4be1eecf4b7ea72aad81f294a80b52848dcf9e6",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBeNull() | error: expect(received).toBeNull() |  7 pass |  3 fail"
+        },
+        {
+          "index": 3,
+          "patchSha256": "a78525776bdb0beeb34564229c2b4498bf1fe8fe65974e295636520decfdd12d",
+          "storedPassed": true,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBeNull() | error: expect(received).toBeNull() |  8 pass |  2 fail"
+        }
+      ],
+      "passingCandidates": []
+    },
+    {
+      "taskId": "interval-subtract",
+      "sourceRun": "2026-08-18T06-38-18-609Z",
+      "poolPath": "bench/results/2026-08-18T06-38-18-609Z/pool/interval-subtract.json",
+      "poolSha256": "e718b9635b321c51637b6f990e2758d02906b425203499fc0287b1d3a0c642a7",
+      "taskSha256": "f5d8ba7290ee0710a2b9505d6fad61aca76b0a7a80a728a51f55ac2e91b73e24",
+      "oracleSha256": "c6fd6b5923816c860c8af6c5a0d7e3c024c6cc825376b15a1b69d22a5e84fa26",
+      "candidates": [
+        {
+          "index": 0,
+          "patchSha256": "b7280a7e192611e0ef7a652fd65fa341933b37fd8f48f03f82620010d5ea6f30",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toEqual(expected) |  7 pass |  1 fail"
+        },
+        {
+          "index": 1,
+          "patchSha256": "47961e222912e261f4aa77c76f3f65e603ba8e3f02f22dff89882ea95fcd2cbb",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toEqual(expected) | error: expect(received).not.toBe(expected) |  5 pass |  3 fail"
+        },
+        {
+          "index": 2,
+          "patchSha256": "79d80aba0f27bd52dab0b1b9b5215f11fe905b532a01b7d433086602776826b8",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toEqual(expected) | error: expect(received).not.toBe(expected) |  5 pass |  3 fail"
+        },
+        {
+          "index": 3,
+          "patchSha256": "27362dc41aca837af1261713b4d0c20a6093dd2d3d3fb0bf6574a6bea025449c",
+          "storedPassed": true,
+          "rescoredPassed": true,
+          "detail": "8 pass |  0 fail"
+        }
+      ],
+      "passingCandidates": [
+        3
+      ]
+    },
+    {
+      "taskId": "query-merge",
+      "sourceRun": "2026-08-18T06-38-18-609Z",
+      "poolPath": "bench/results/2026-08-18T06-38-18-609Z/pool/query-merge.json",
+      "poolSha256": "b7fd9cb8cdc7e34c114da4c62642487cd7768572c91bff37d6b6220210ae7ce3",
+      "taskSha256": "cb55e38cd18d4cd46e39ff03805880694485fb622a8b6aec64971ea952974ecc",
+      "oracleSha256": "63739d4f88cc1b5336d08afa9bfc25d54d5395560e74c0640be19bb0d45b9bb6",
+      "candidates": [
+        {
+          "index": 0,
+          "patchSha256": "3e37c7c1baa34782314d5aa26021cacf7201c9a852c85a1f04205c633df653c4",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBe(expected) |  7 pass |  1 fail"
+        },
+        {
+          "index": 1,
+          "patchSha256": "15592e345203de7d522aa300234e59197bb2688647666aadbd12e54e6903d15e",
+          "storedPassed": true,
+          "rescoredPassed": true,
+          "detail": "8 pass |  0 fail"
+        },
+        {
+          "index": 2,
+          "patchSha256": "9e28c756a75807cad929526708afa85a12ee86391c2615abcc052274f1f1a5ca",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toThrow(expected) |  7 pass |  1 fail"
+        },
+        {
+          "index": 3,
+          "patchSha256": "31d908f84f1994c7278cafca0e61961cd4d3519898a5a55b8f140bac1251b8d5",
+          "storedPassed": false,
+          "rescoredPassed": false,
+          "detail": "error: expect(received).toBe(expected) | error: expect(received).toBe(expected) |  6 pass |  2 fail"
+        }
+      ],
+      "passingCandidates": [
+        1
+      ]
+    }
+  ]
+}

@@ -292,3 +292,33 @@ accuracy.
 
 The superseded aggregate remains at `bench/results/luna-sampled-verifier-fix.json` for diagnosis.
 It does not support a verifier-accuracy or latency claim.
+
+## Repaired sampled verifier on corrected pools
+
+The final validation uses the four remaining discriminating pools after excluding
+`content-type` and `http-range`. Each task has four candidates, at least one corrected-oracle
+pass and one failure, random pass@1 of 31.25%, and oracle pass@4 of 100%. The verifier receives
+only patch and process evidence, requires code-path support for claimed defects, and ranks by
+pairwise-majority wins with weakest-head-to-head and expected-probability tie-breakers.
+
+| Pairwise rounds | Selections | Oracle-labeled selections | Comparisons | Provider requests | Input tokens | Reported verifier cost | Mean task wall clock |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 12 | **12/12 (100.0%)** | 72 | 84 | 3.57M | $0.5231 | 40.3s |
+
+Every task selected an oracle-passing candidate in all three seeds. On the same four tasks,
+the pre-repair one-round selector produced 10/12 (83.3%). The observed repaired sweep used
+11.5% fewer input tokens and 17.4% less reported cost. Mixed-path mean wall clock was 28.3%
+higher; cold and warm paths were not separated. This is a same-bank before/after observation,
+not a single-factor ablation or a general coding-agent accuracy estimate.
+
+All nine runs captured identity before the first verifier call and recorded clean source
+`35f8df6495cba10c9c0c7173da83e9f0304e17c0`, OMP binary hash
+`a547f8fa4457e1f96886a7ece04a27dc110f80c29b395daeb223f4a98e802a24`,
+omp/17.3.4, Bun 1.3.14, and Linux x64 on the Hostinger VPS. Candidate pools were reused;
+all pairwise judgments were live and application-level verifier caches were empty. Reported
+cost is OMP runtime accounting for subscription-routed usage, not a per-token invoice. The
+current oracles rescored every candidate in all six source pools at clean source `35f8df6`;
+that SHA-pinned evidence is `bench/results/verifier-repair-rescore.json`.
+
+Machine-readable aggregate: `bench/results/luna-sampled-verifier-repair.json`. Raw scorecards
+are under the nine run directories named in that aggregate.
