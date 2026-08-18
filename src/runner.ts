@@ -19,6 +19,7 @@ import type { BestOfManifest, BestOfOptions, BestOfProgress, BestOfResult, Candi
 import { assertScoringSupported, verifyCandidates } from "./verifier";
 
 const DEFAULT_AGENT_PROMPT = `Work independently on the task below. Modify the repository directly, run focused validation, and finish only when the requested behavior works. Do not commit changes. Preserve unrelated user work.\n\n`;
+const VERIFIER_TIMEOUT_MS = 120_000;
 
 function emit(options: BestOfOptions, progress: BestOfProgress): void {
 	options.onProgress?.(progress);
@@ -38,7 +39,7 @@ function validateOptions(options: BestOfOptions): number {
 	if (options.apply && !options.verify) throw new Error("A patch cannot be applied without verification because nothing selected it");
 	const duration = parseDurationMs(options.maxTime);
 	if (duration < 1) throw new Error("Max time must be greater than zero");
-	return duration + 30_000;
+	return duration;
 }
 
 function runId(): string {
@@ -328,7 +329,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 				seed: options.seed,
 				cachePath: verifierCachePath,
 				signal: options.signal,
-				timeoutMs: candidateTimeoutMs,
+				timeoutMs: VERIFIER_TIMEOUT_MS,
 			};
 			try {
 				if (options.verifierBackend === "sampled") {

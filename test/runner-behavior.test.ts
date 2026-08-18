@@ -89,6 +89,32 @@ test("refuses a dirty parent before creating candidates", async () => {
 		await rm(temporaryRoot, { recursive: true, force: true });
 	}
 });
+test("enforces max time as the candidate wall-clock limit", async () => {
+	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-timeout-test-"));
+	const omp = path.join(temporaryRoot, "mock-omp.ts");
+	try {
+		const repo = await initializeRepository(temporaryRoot);
+		await Bun.write(
+			omp,
+			`#!/usr/bin/env bun\nimport { mkdirSync } from "node:fs";\nif (!process.argv.includes("--no-tools")) { try { mkdirSync(process.env.TEST_TIMEOUT_LOCK); await Bun.sleep(3_000); } catch {} }\n${messageEvent}\n`,
+		);
+		await chmod(omp, 0o755);
+		const previousLock = process.env.TEST_TIMEOUT_LOCK;
+		process.env.TEST_TIMEOUT_LOCK = path.join(temporaryRoot, "slow-candidate");
+		try {
+			await withRunnerEnvironment(temporaryRoot, omp, async () => {
+				const result = await runBestOf({ ...options(repo), apply: false, verify: false, maxTime: "1s" });
+				expect(result.candidates.map((candidate) => candidate.timedOut).sort()).toEqual([false, true]);
+				expect((await run(["git", "worktree", "list", "--porcelain"], repo)).match(/^worktree /gm)).toHaveLength(1);
+			});
+		} finally {
+			if (previousLock === undefined) delete process.env.TEST_TIMEOUT_LOCK;
+			else process.env.TEST_TIMEOUT_LOCK = previousLock;
+		}
+	} finally {
+		await rm(temporaryRoot, { recursive: true, force: true });
+	}
+}, 15_000);
 test("excludes failed candidates and reports an empty selected patch as not applied", async () => {
 	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-result-test-"));
 	const omp = path.join(temporaryRoot, "mock-omp.ts");
