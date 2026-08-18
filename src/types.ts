@@ -46,7 +46,7 @@ export interface UsageSummary {
 
 export interface CandidateResult {
 	index: number;
-	worktree: string;
+	workspace: string;
 	exitCode: number;
 	durationMs: number;
 	transcript: string;

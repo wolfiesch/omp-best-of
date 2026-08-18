@@ -13,7 +13,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - Verifier results now identify their `logprob` or `sampled` backend. `--evaluations` means repeated upstream evaluations in logprob mode and complete pairwise rounds in sampled mode.
 - Sampled judgments now prioritize semantic contract correctness over candidate-authored validation and omit the candidate transcript. Claimed bugs must survive a code-path falsification check. Rankings use pairwise-majority wins, weakest-head-to-head strength, then expected probability. This prevents validation theater, unsupported implementation claims, or large margins against weak candidates from overruling direct comparison evidence.
-- Candidate generation now uses OMP's native copy-on-write isolation lifecycle and baseline-aware patch capture, with OMP's Git worktree fallback retained for hosts without a native backend.
+- Candidate generation now uses OMP's native copy-on-write isolation lifecycle and baseline-aware patch capture, with OMP's Git worktree fallback retained for hosts without a native backend. Candidate results expose the backend-neutral path as `workspace`.
 
 ## [0.1.1] - 2026-08-18
 

@@ -123,7 +123,7 @@ async function runCandidate(
 	]);
 	return {
 		index,
-		worktree: workspace,
+		workspace,
 		exitCode: patchError ? 1 : processResult.exitCode,
 		durationMs: Date.now() - started,
 		transcript: parsed.transcript,

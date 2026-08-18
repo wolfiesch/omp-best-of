@@ -73,7 +73,7 @@ console.log(JSON.stringify({
 		for (const candidate of result.candidates) {
 			if (candidate.exitCode !== 0) throw new Error(`Candidate failed: ${candidate.stderr}`);
 			expect(candidate.patch).toContain("candidate.txt");
-			expect(await access(candidate.worktree).then(() => true, () => false)).toBe(false);
+			expect(await access(candidate.workspace).then(() => true, () => false)).toBe(false);
 		}
 		expect(await access(path.join(repo, "candidate.txt")).then(() => true, () => false)).toBe(false);
 		expect(await run(["git", "status", "--porcelain=v1", "--untracked-files=all"], repo)).toBe("");
