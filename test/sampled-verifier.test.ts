@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	aggregatePairwiseJudgments,
 	buildCandidateAuditPrompt,
+	combineCandidateAudits,
 	buildPairSchedule,
 	buildPairwisePrompt,
 	parseCandidateAudit,
@@ -86,11 +87,24 @@ describe("sampled verifier prompt", () => {
 			seed: 0,
 			cachePath: "",
 		};
-		const prompt = buildCandidateAuditPrompt(input, 0);
+		const prior = { probabilityPass: 95, findings: [], summary: "No defect found" };
+		const prompt = buildCandidateAuditPrompt(input, 0, [prior]);
 		expect(prompt).toContain("unequal primitives of the same type");
-		expect(prompt).toContain("Reconstruct what actually failed");
+		expect(prompt).toContain("Assume prior audits missed a simple defect");
 		expect(prompt).toContain("contract-valid counterexample");
+		expect(prompt).toContain('"priorAudits":[{"probabilityPass":95');
 	});
+
+	test("combines repeated audits conservatively", () => {
+		expect(combineCandidateAudits([
+			{ probabilityPass: 96, findings: [], summary: "No defect found" },
+			{ probabilityPass: 25, findings: ["equal(2, 3) returns true"], summary: "Primitive branch fails" },
+		])).toEqual({
+			probabilityPass: 25,
+			findings: ["equal(2, 3) returns true"],
+			summary: "Pass 1: No defect found Pass 2: Primitive branch fails",
+		});
+});
 });
 
 test("keeps recorded tool evidence but excludes assistant narration", () => {

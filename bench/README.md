@@ -34,11 +34,12 @@ bun bench/run.ts --reuse <run-id> \
 ```
 
 Generation cost comes from the agent runtime's usage accounting. Sampled verification adds
-one cached falsification audit per candidate before its pairwise rounds, so a one-round
-five-candidate reuse run makes 15 verifier calls. Logprob verifier cost is computed from
-DeepSeek list prices in `VERIFIER_PRICE_PER_MTOK`. Sampled verifier cost is the OMP runtime's
-accounting estimate for its model route; subscription-routed usage is not billed per token.
-Neither number is an invoice.
+two cached falsification passes per candidate before its pairwise rounds; the second audit
+challenges the first. A one-round five-candidate reuse run therefore makes 20 ranking calls,
+plus one live capability-preflight call. Logprob verifier cost is computed from DeepSeek list
+prices in `VERIFIER_PRICE_PER_MTOK`. Sampled verifier cost is the OMP runtime's accounting
+estimate for its model route; subscription-routed usage is not billed per token. Neither
+number is an invoice.
 
 ## Labels
 
