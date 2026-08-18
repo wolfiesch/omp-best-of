@@ -212,9 +212,11 @@ async function rankPool(
 	return { verifier, eligible };
 }
 
-function summarize(pool: TaskPool, eligible: PoolCandidate[], verifier: VerifierResult | null, wallClockMs: number): TaskOutcome {
+function summarize(pool: TaskPool, eligible: PoolCandidate[], verifier: VerifierResult | null, wallClockMs: number, ranked: boolean): TaskOutcome {
 	const passedCandidates = pool.candidates.filter(candidate => candidate.passed).length;
-	const selected = verifier ? eligible[verifier.index] : (eligible[0] ?? null);
+	// Without a tournament there is no pick. Falling back to the first candidate would
+	// report the pool order as a selection and inflate the verifier column.
+	const selected = !ranked ? null : verifier ? eligible[verifier.index] : (eligible[0] ?? null);
 	return {
 		taskId: pool.taskId,
 		candidates: pool.candidates.length,
@@ -250,7 +252,11 @@ function aggregate(outcomes: TaskOutcome[]) {
 	const scope = (subset: TaskOutcome[]) => ({
 		tasks: subset.length,
 		randomPass1: mean(subset.map(outcome => outcome.randomPass1)),
-		verifierPass: rate(subset.filter(outcome => outcome.verifierPass === true).length, subset.length),
+		verifierPass: rate(
+			subset.filter(outcome => outcome.verifierPass === true).length,
+			subset.filter(outcome => outcome.verifierPass !== null).length,
+		),
+		ranked: subset.filter(outcome => outcome.verifierPass !== null).length,
 		oraclePassN: rate(subset.filter(outcome => outcome.oraclePass).length, subset.length),
 	});
 	const generationUsd = outcomes.reduce((sum, outcome) => sum + outcome.generationUsd, 0);
@@ -339,8 +345,8 @@ function markdown(scorecard: Record<string, unknown>, outcomes: TaskOutcome[], s
 		"",
 		"| Scope | Tasks | Random pass@1 | Verifier-selected | Oracle pass@N |",
 		"| --- | --- | --- | --- | --- |",
-		`| All tasks | ${summary.all.tasks} | ${pct(summary.all.randomPass1)} | ${pct(summary.all.verifierPass)} | ${pct(summary.all.oraclePassN)} |`,
-		`| Discriminating only | ${summary.discriminating.tasks} | ${pct(summary.discriminating.randomPass1)} | ${pct(summary.discriminating.verifierPass)} | ${pct(summary.discriminating.oraclePassN)} |`,
+		`| All tasks | ${summary.all.tasks} | ${pct(summary.all.randomPass1)} | ${summary.all.ranked === 0 ? "n/a" : pct(summary.all.verifierPass)} | ${pct(summary.all.oraclePassN)} |`,
+		`| Discriminating only | ${summary.discriminating.tasks} | ${pct(summary.discriminating.randomPass1)} | ${summary.discriminating.ranked === 0 ? "n/a" : pct(summary.discriminating.verifierPass)} | ${pct(summary.discriminating.oraclePassN)} |`,
 		"",
 		"A task is discriminating when at least one candidate passes and at least one fails. Only those tasks can separate the three numbers.",
 		"",
@@ -497,7 +503,7 @@ async function main(): Promise<void> {
 			for (const pool of pools) {
 				const started = Date.now();
 				const { verifier, eligible } = await rankPool(pool, options, path.join(runDir, `verifier-cache-${pool.taskId}.json`), endpoint);
-				outcomes.push(summarize(pool, eligible, verifier, Date.now() - started));
+				outcomes.push(summarize(pool, eligible, verifier, Date.now() - started, true));
 				await mkdir(path.join(runDir, "pool"), { recursive: true });
 				await Bun.write(path.join(runDir, "pool", `${pool.taskId}.json`), `${JSON.stringify(pool, null, 2)}\n`);
 				process.stderr.write(`${pool.taskId} re-ranked from ${options.reuse}\n`);
@@ -507,7 +513,7 @@ async function main(): Promise<void> {
 			for (const taskId of taskIds) {
 				const { pool, wallClockMs, verifier, eligible } = await generate(taskId, options, runDir, modelSource);
 				generation.push(pool.generatedBy);
-				outcomes.push(summarize(pool, eligible, verifier, wallClockMs));
+				outcomes.push(summarize(pool, eligible, verifier, wallClockMs, !options.generateOnly));
 			}
 		}
 	} finally {
