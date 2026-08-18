@@ -96,6 +96,8 @@ describe("sampled verifier prompt", () => {
 		expect(prompt).toContain("unequal primitives of the same type");
 		expect(prompt).toContain("Assume prior audits missed a simple defect");
 		expect(prompt).toContain("contract-valid counterexample");
+		expect(prompt).toContain("execute at least three focused contract-derived probes");
+		expect(prompt).toContain("do not use inherited properties");
 		expect(prompt).toContain('"priorAudits":[{"probabilityPass":95');
 	});
 
