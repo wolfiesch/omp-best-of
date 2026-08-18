@@ -71,7 +71,7 @@ console.log(JSON.stringify({
 
 		expect(result.candidates).toHaveLength(2);
 		for (const candidate of result.candidates) {
-			expect(candidate.exitCode).toBe(0);
+			if (candidate.exitCode !== 0) throw new Error(`Candidate failed: ${candidate.stderr}`);
 			expect(candidate.patch).toContain("candidate.txt");
 			expect(await access(candidate.worktree).then(() => true, () => false)).toBe(false);
 		}
