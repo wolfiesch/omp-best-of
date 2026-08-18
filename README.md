@@ -161,14 +161,15 @@ Two verifier backends are available:
   score-token distributions, repeats evaluations to reduce variance, decomposes the rubric,
   and uses its probabilistic pivot tournament. This is the paper's method and requires a
   compatible scoring endpoint.
-- **`sampled`.** OMP asks the selected subscription model for a pairwise probability for
-  every unordered candidate pair. Candidate orientation and call order are seeded, up to
-  four comparisons run concurrently, and pairwise-majority wins determine the ranking.
-  A candidate's weakest head-to-head probability breaks majority cycles, followed by
-  expected win probability. Semantic contract violations are decisive. Each claimed bug
-  must cite an exact code path and produce a concrete contract-valid counterexample;
-  validation quality is only a tie-breaker. `--evaluations` repeats the complete round
-  robin. Results are cached after every call.
+- **`sampled`.** OMP first audits each candidate independently for contract-valid
+  counterexamples, then asks the selected subscription model for a pairwise probability for
+  every unordered pair. Pairwise judges receive both independent audits as untrusted leads
+  and must verify each finding against the patch. Candidate orientation and call order are
+  seeded, up to four calls run concurrently, and pairwise-majority wins determine the ranking.
+  A candidate's weakest head-to-head probability breaks majority cycles, followed by expected
+  win probability. Semantic contract violations are decisive; validation quality is only a
+  tie-breaker. `--evaluations` repeats the pairwise round robin while candidate audits run once.
+  Results are cached after every call.
 
 Both backends use the same three criteria:
 
@@ -190,10 +191,11 @@ without letting candidate-authored validation narration outweigh implementation 
 Total work is `N` generation runs plus verification. Two properties matter when budgeting:
 
 - Logprob verification is comparison heavy and can itself consume substantial reasoning
-  tokens. Sampled verification uses $N(N-1)/2$ subscription calls per evaluation: six calls
-  for four candidates and 28 for eight.
-- Candidates run concurrently. Sampled comparisons also run up to four at a time, so wall
-  clock is lower than the sum of call durations.
+  tokens. Sampled verification uses $N + E N(N-1)/2$ verifier invocations for $N$ candidates
+  and $E$ pairwise evaluations: 10 invocations for four candidates and 36 for eight at one
+  evaluation. Candidate audits account for the first $N$ calls and are not repeated.
+- Candidates run concurrently. Sampled audit and comparison stages each run up to four calls
+  at a time, so wall clock is lower than the sum of call durations.
 
 Every run reports candidate and verifier token usage. Sampled-mode `reported_cost_usd` is
 OMP runtime accounting, not an incremental bill for subscription-routed usage. Subscription

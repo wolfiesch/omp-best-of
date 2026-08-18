@@ -14,7 +14,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - Verifier results now identify their `logprob` or `sampled` backend. `--evaluations` means repeated upstream evaluations in logprob mode and complete pairwise rounds in sampled mode.
-- Sampled judgments now prioritize semantic contract correctness over candidate-authored validation. They retain recorded tool calls and results but omit assistant reasoning and final claims. Claimed bugs must survive code-path falsification and produce a contract-valid counterexample. Rankings use pairwise-majority wins, weakest-head-to-head strength, then expected probability. This prevents validation theater, unsupported implementation claims, implementation-shape preferences, or large margins against weak candidates from overruling direct comparison evidence.
+- Sampled verification independently falsifies each candidate before pairwise ranking, then gives both audits to the pairwise judge as untrusted leads. Judgments prioritize semantic contract correctness over candidate-authored validation, retain recorded tool calls and results, and omit assistant reasoning and final claims. Claimed bugs must survive code-path falsification and produce a contract-valid counterexample. Rankings use pairwise-majority wins, weakest-head-to-head strength, then expected probability.
 - Reuse-rank runs rescore every stored patch against the current hidden oracle before selection, preventing stale generation-time labels after an oracle correction.
 - Candidate generation now uses OMP's native copy-on-write isolation lifecycle and baseline-aware patch capture, with OMP's Git worktree fallback retained for hosts without a native backend.
 

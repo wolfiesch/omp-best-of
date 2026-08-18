@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
 	aggregatePairwiseJudgments,
+	buildCandidateAuditPrompt,
 	buildPairSchedule,
 	buildPairwisePrompt,
+	parseCandidateAudit,
 	parsePairwiseJudgment,
 	sampledVerifierUsage,
 } from "../src/sampled-verifier";
@@ -40,6 +42,15 @@ describe("sampled verifier response parsing", () => {
 		expect(() => parsePairwiseJudgment('{"probabilityA":101}')).toThrow("0 to 100");
 		expect(() => parsePairwiseJudgment('{"probabilityA":"90"}')).toThrow("0 to 100");
 	});
+
+	test("reads bounded candidate falsification audits", () => {
+		expect(parseCandidateAudit('{"probabilityPass":35,"findings":["equal(2, 3) returns true"],"summary":"primitive base case fails"}')).toEqual({
+			probabilityPass: 35,
+			findings: ["equal(2, 3) returns true"],
+			summary: "primitive base case fails",
+		});
+		expect(() => parseCandidateAudit('{"probabilityPass":-1,"findings":[]}')).toThrow("0 to 100");
+	});
 });
 
 describe("sampled verifier prompt", () => {
@@ -63,6 +74,22 @@ describe("sampled verifier prompt", () => {
 		expect(prompt).toContain("construct a contract-valid input");
 		expect(prompt).toContain("Judge behavior, not implementation shape");
 		expect(prompt).toContain("probability of passing unseen contract tests");
+	});
+
+	test("audits helper base cases before pairwise ranking", () => {
+		const input = {
+			problem: "Implement structural equality",
+			candidates: ["function equal(a, b) { return Object.keys(a).length === Object.keys(b).length; }"],
+			criteria: { Correctness: "Unequal primitives must differ" },
+			model: "test/model",
+			nEvaluations: 1,
+			seed: 0,
+			cachePath: "",
+		};
+		const prompt = buildCandidateAuditPrompt(input, 0);
+		expect(prompt).toContain("unequal primitives of the same type");
+		expect(prompt).toContain("Reconstruct what actually failed");
+		expect(prompt).toContain("contract-valid counterexample");
 	});
 });
 
