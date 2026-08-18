@@ -29,7 +29,8 @@ bun bench/run.ts --n 4 --generate-only               # store pools without verif
 bun bench/run.ts --reuse <run-id> --evaluations 4    # re-rank with the logprob backend
 bun bench/run.ts --reuse <run-id> \
   --verifier-backend sampled \
-  --verifier-model openai-codex/gpt-5.6-luna         # subscription-backed pairwise judge
+  --verifier-model openai-codex/gpt-5.6-luna \
+  --verifier-thinking high                            # stronger subscription-backed judge
 ```
 
 Generation cost comes from the agent runtime's usage accounting. Logprob verifier cost is

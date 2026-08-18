@@ -45,6 +45,7 @@ Options:
   --model <provider/model> Candidate model (default: nous/deepseek/deepseek-v4-flash-0731)
   --verifier-model <model> Verifier model selector (default: deepseek/deepseek-v4-flash)
   --verifier-backend <mode> logprob or sampled (default: logprob)
+  --verifier-thinking <level> Sampled-verifier thinking level (default: low)
   --evaluations <n>        Logprob repetitions or sampled pairwise rounds (default: 1)
   --pivots <n>             Tournament pivots for the logprob backend (default: 2)
   --max-time <duration>    Per-candidate limit (default: 5m)
@@ -63,6 +64,7 @@ interface BenchOptions {
 	generatorModel: string;
 	verifierModel: string;
 	verifierBackend: VerifierBackend;
+	verifierThinking: string;
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
@@ -125,6 +127,7 @@ function parseArgs(argv: string[]): BenchOptions {
 		generatorModel: "nous/deepseek/deepseek-v4-flash-0731",
 		verifierModel: "deepseek/deepseek-v4-flash",
 		verifierBackend: "logprob",
+		verifierThinking: "low",
 		nEvaluations: 1,
 		pivots: 2,
 		maxTime: "5m",
@@ -156,6 +159,10 @@ function parseArgs(argv: string[]): BenchOptions {
 				options.verifierBackend = backend;
 				break;
 			}
+			case "--verifier-thinking":
+				options.verifierThinking = argv[++index] ?? "";
+				if (!options.verifierThinking) throw new Error("--verifier-thinking requires a value");
+				break;
 			case "--evaluations":
 				options.nEvaluations = integer(argv[++index], "--evaluations");
 				break;
@@ -222,6 +229,7 @@ async function rankPool(
 				...common,
 				candidates: eligible.map(composeSampledVerifierEvidence),
 				model: options.verifierModel,
+				thinking: options.verifierThinking,
 				cwd: REPO_ROOT,
 			})
 		: await verifyCandidates({
@@ -332,7 +340,9 @@ async function environment(mode: string, options: BenchOptions) {
 		iterationsPerTask: 1,
 		warmupsDiscarded: 0,
 		verifierPricePerMtok: options.verifierBackend === "logprob" ? VERIFIER_PRICE_PER_MTOK : null,
-		sampledVerifierSettings: options.verifierBackend === "sampled" ? SAMPLED_VERIFIER_SETTINGS : null,
+		sampledVerifierSettings: options.verifierBackend === "sampled"
+			? { ...SAMPLED_VERIFIER_SETTINGS, thinking: options.verifierThinking }
+			: null,
 		oracleLabels: options.reuse ? "rescored against current oracle before ranking" : "scored during generation",
 		label: options.label,
 		startedAt: new Date().toISOString(),
@@ -439,6 +449,7 @@ async function generate(
 			n: options.n,
 			generatorModel: options.generatorModel,
 			verifierModel: options.verifierModel,
+			verifierThinking: options.verifierThinking,
 			verifierBackend: options.verifierBackend,
 			nEvaluations: options.nEvaluations,
 			pivots: options.pivots,

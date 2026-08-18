@@ -58,6 +58,8 @@ A candidate that exits non-zero, or whose patch cannot be captured, is excluded 
 Candidates inherit the calling session's model and thinking level, so `/best-of` runs
 what you are already running; `--model` and `--thinking` override that. Verification is
 separate and defaults to the `logprob` backend with `deepseek/deepseek-v4-flash`.
+Sampled verification defaults to low reasoning; `--verifier-thinking` changes the judge
+without changing candidate generation.
 
 The default logprob backend resolves credentials through omp's model registry. DeepSeek V4
 Flash is the default because its native score-tag path is known to work. Other endpoints

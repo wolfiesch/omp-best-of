@@ -9,6 +9,7 @@ export interface SampledVerifierInput {
 	candidates: string[];
 	criteria: Record<string, string>;
 	model: string;
+	thinking?: string;
 	nEvaluations: number;
 	seed: number;
 	cachePath: string;
@@ -137,7 +138,7 @@ async function judgePair(input: SampledVerifierInput, pair: PairComparison): Pro
 			"--no-session",
 			"--no-title",
 			"--thinking",
-			SAMPLED_VERIFIER_SETTINGS.thinking,
+			input.thinking || SAMPLED_VERIFIER_SETTINGS.thinking,
 			"--max-time",
 			SAMPLED_VERIFIER_SETTINGS.timeout,
 			"-p",
@@ -162,6 +163,7 @@ function cacheDigest(input: SampledVerifierInput): string {
 			candidates: input.candidates,
 			criteria: input.criteria,
 			model: input.model,
+			thinking: input.thinking || SAMPLED_VERIFIER_SETTINGS.thinking,
 			nEvaluations: input.nEvaluations,
 			promptVersion: JUDGE_PROMPT_VERSION,
 			seed: input.seed,

@@ -233,6 +233,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 						...common,
 						candidates: eligible.map(composeSampledVerifierEvidence),
 						model: options.verifierModel,
+						thinking: options.verifierThinking,
 						preflightUsage: sampledPreflightUsage,
 						cwd: root,
 					})

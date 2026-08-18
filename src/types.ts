@@ -10,6 +10,8 @@ export interface BestOfOptions {
 	generatorModel: string;
 	verifierModel: string;
 	verifierBackend: VerifierBackend;
+	/** Sampled-verifier thinking level; empty uses the verifier's low-cost default. */
+	verifierThinking: string;
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
