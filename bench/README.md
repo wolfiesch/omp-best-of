@@ -33,10 +33,17 @@ bun bench/run.ts --reuse <run-id> \
   --verifier-thinking high                            # stronger subscription-backed judge
 ```
 
-Generation cost comes from the agent runtime's usage accounting. Logprob verifier cost is
-computed from DeepSeek list prices in `VERIFIER_PRICE_PER_MTOK`. Sampled verifier cost is
-the OMP runtime's accounting estimate for its model route; subscription-routed usage is not
-billed per token. Neither number is an invoice.
+Generation cost comes from the agent runtime's usage accounting. Sampled verification
+materializes each candidate's final repository, then adds two cached falsification passes
+through an OS-sandboxed probe tool. The workspace is read-only, credentials and user-home data
+are unavailable, network is disabled, and only private scratch storage is writable. The first
+pass must record one completed probe and the second must record three before pairwise ranking.
+A one-round five-candidate reuse run therefore makes at least 20 verifier invocations. A live
+run adds one capability-preflight invocation. Logprob verifier cost is computed from DeepSeek
+list prices in `VERIFIER_PRICE_PER_MTOK`. Sampled verifier cost is the OMP runtime's accounting
+estimate for its model route; subscription-routed usage is not billed per token. Neither number
+is an invoice.
+Tool-enabled audit invocations can consume multiple provider requests.
 
 ## Labels
 

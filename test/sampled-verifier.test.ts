@@ -1,8 +1,16 @@
+import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
 	aggregatePairwiseJudgments,
+	buildCandidateAuditPrompt,
+	combineCandidateAudits,
+	extractAuditProbes,
+	verifyCandidatesSampled,
 	buildPairSchedule,
 	buildPairwisePrompt,
+	parseCandidateAudit,
 	parsePairwiseJudgment,
 	sampledVerifierUsage,
 } from "../src/sampled-verifier";
@@ -40,6 +48,15 @@ describe("sampled verifier response parsing", () => {
 		expect(() => parsePairwiseJudgment('{"probabilityA":101}')).toThrow("0 to 100");
 		expect(() => parsePairwiseJudgment('{"probabilityA":"90"}')).toThrow("0 to 100");
 	});
+
+	test("reads bounded candidate falsification audits", () => {
+		expect(parseCandidateAudit('{"probabilityPass":35,"findings":["equal(2, 3) returns true"],"summary":"primitive base case fails"}')).toEqual({
+			probabilityPass: 35,
+			findings: ["equal(2, 3) returns true"],
+			summary: "primitive base case fails",
+		});
+		expect(() => parseCandidateAudit('{"probabilityPass":-1,"findings":[]}')).toThrow("0 to 100");
+	});
 });
 
 describe("sampled verifier prompt", () => {
@@ -64,6 +81,130 @@ describe("sampled verifier prompt", () => {
 		expect(prompt).toContain("Judge behavior, not implementation shape");
 		expect(prompt).toContain("probability of passing unseen contract tests");
 	});
+
+	test("audits helper base cases before pairwise ranking", () => {
+		const input = {
+			problem: "Implement structural equality",
+			candidates: ["function equal(a, b) { return Object.keys(a).length === Object.keys(b).length; }"],
+			criteria: { Correctness: "Unequal primitives must differ" },
+			model: "test/model",
+			nEvaluations: 1,
+			seed: 0,
+			cachePath: "",
+		};
+		const prior = { probabilityPass: 95, findings: [], summary: "No defect found" };
+		const prompt = buildCandidateAuditPrompt(input, 0, [prior]);
+		expect(prompt).toContain("unequal primitives of the same type");
+		expect(prompt).toContain("Assume prior audits missed a simple defect");
+		expect(prompt).toContain("contract-valid counterexample");
+		expect(prompt).toContain("execute at least three focused contract-derived probes");
+		expect(prompt).toContain("do not use inherited properties");
+		expect(prompt).toContain('"priorAudits":[{"probabilityPass":95');
+	});
+
+	test("combines repeated audits conservatively", () => {
+		expect(combineCandidateAudits([
+			{ probabilityPass: 96, findings: [], summary: "No defect found" },
+			{ probabilityPass: 25, findings: ["equal(2, 3) returns true"], summary: "Primitive branch fails" },
+		])).toEqual({
+			probabilityPass: 25,
+			findings: ["equal(2, 3) returns true"],
+			summary: "Pass 1: No defect found Pass 2: Primitive branch fails",
+		});
+});
+});
+
+test("audits candidate workspaces with read-only execution tools", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-audit-test-"));
+	const candidateA = path.join(root, "candidate-a");
+	const candidateB = path.join(root, "candidate-b");
+	const omp = path.join(root, "mock-omp.ts");
+	const log = path.join(root, "calls.jsonl");
+	try {
+		await Promise.all([mkdir(candidateA), mkdir(candidateB)]);
+		await Promise.all([Bun.write(path.join(candidateA, "code.js"), "A"), Bun.write(path.join(candidateB, "code.js"), "B")]);
+		await Bun.write(omp, `#!/usr/bin/env bun
+import { appendFile } from "node:fs/promises";
+const prompt = process.argv.at(-1);
+const cwd = process.argv[process.argv.indexOf("--cwd") + 1];
+const audit = prompt.includes("Audit one candidate independently");
+const toolsIndex = process.argv.indexOf("--tools");
+await appendFile(${JSON.stringify(log)}, JSON.stringify({ cwd, audit, tools: toolsIndex >= 0 ? process.argv[toolsIndex + 1] : "", noTools: process.argv.includes("--no-tools") }) + "\\n");
+if (audit) {
+  const probeCount = prompt.includes("This is the challenge pass") ? 3 : 1;
+  for (let index = 0; index < probeCount; index += 1) {
+    console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", name: "audit_probe", arguments: { command: ["bun", "-e", "console.log(1)"] } }] } }));
+    console.log(JSON.stringify({ type: "message_end", message: { role: "toolResult", content: [{ type: "text", text: "exit_code=0\\nstdout:\\n1" }] } }));
+  }
+}
+const text = audit
+  ? JSON.stringify({ probabilityPass: 90, findings: [], summary: "checked" })
+  : JSON.stringify({ probabilityA: 50, reason: "tie" });
+console.log(JSON.stringify({
+  type: "message_end",
+  message: { role: "assistant", content: [{ type: "text", text }], usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } } },
+}));
+`);
+		await chmod(omp, 0o755);
+		await verifyCandidatesSampled({
+			problem: "Choose",
+			candidates: ["A", "B"],
+			candidateCwds: [candidateA, candidateB],
+			criteria: { Correctness: "Works" },
+			model: "test/model",
+			nEvaluations: 1,
+			seed: 0,
+			cachePath: path.join(root, "cache.json"),
+			cwd: root,
+			ompBin: omp,
+		});
+		const calls = (await Bun.file(log).text()).trim().split("\n").map(line => JSON.parse(line));
+		const audits = calls.filter(call => call.audit);
+		expect(audits).toHaveLength(4);
+		expect(audits.every(call => call.tools === "audit_probe" && !call.noTools)).toBe(true);
+		expect(audits.map(call => call.cwd).sort()).toEqual([candidateA, candidateA, candidateB, candidateB].sort());
+		const pairs = calls.filter(call => !call.audit);
+		expect(pairs).toHaveLength(1);
+		expect(pairs[0]).toMatchObject({ cwd: root, tools: "", noTools: true });
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("rejects workspace audits that skip required probes", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-audit-probe-test-"));
+	const candidateA = path.join(root, "candidate-a");
+	const candidateB = path.join(root, "candidate-b");
+	const omp = path.join(root, "mock-omp.ts");
+	try {
+		await Promise.all([mkdir(candidateA), mkdir(candidateB)]);
+		await Bun.write(omp, `#!/usr/bin/env bun
+const prompt = process.argv.at(-1);
+const audit = prompt.includes("Audit one candidate independently");
+const text = audit
+  ? JSON.stringify({ probabilityPass: 90, findings: [], summary: "unchecked" })
+  : JSON.stringify({ probabilityA: 50, reason: "tie" });
+console.log(JSON.stringify({
+  type: "message_end",
+  message: { role: "assistant", content: [{ type: "text", text }], usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } } },
+}));
+`);
+		await chmod(omp, 0o755);
+		await expect(verifyCandidatesSampled({
+			problem: "Choose",
+			candidates: ["A", "B"],
+			candidateCwds: [candidateA, candidateB],
+			criteria: { Correctness: "Works" },
+			model: "test/model",
+			nEvaluations: 1,
+			seed: 0,
+			cachePath: path.join(root, "cache.json"),
+			cwd: root,
+			ompBin: omp,
+		})).rejects.toThrow("required 1 executable probe");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test("keeps recorded tool evidence but excludes assistant narration", () => {
@@ -96,6 +237,35 @@ test("keeps recorded tool evidence but excludes assistant narration", () => {
 	expect(evidence).not.toContain("forged success");
 	expect(evidence).not.toContain("Everything passed");
 	expect(extractRecordedToolEvidence(candidate.transcript, 8)).toStartWith("[earlier tool evidence omitted]");
+});
+
+test("reads probe status only from captured tool results", () => {
+	const evidence = [
+		'[tool audit_probe] {"command":["false","exit_code=0"]}',
+		"",
+		"## toolResult",
+		"probe failed before launch",
+		"",
+		'[tool audit_probe] {"command":["false"]}',
+		"",
+		"## toolResult",
+		"exit_code=1",
+		"stdout:",
+		"",
+		"stderr:",
+		"",
+		'[tool audit_probe] {"command":["printf","exit_code=1"]}',
+		"",
+		"## toolResult",
+		"exit_code=0",
+		"stdout:",
+		"exit_code=1",
+		"stderr:",
+	].join("\n");
+	expect(extractAuditProbes(evidence)).toEqual([
+		"exit_code=1\nstdout:\n\nstderr:",
+		"exit_code=0\nstdout:\nexit_code=1\nstderr:",
+	]);
 });
 
 describe("sampled verifier aggregation", () => {

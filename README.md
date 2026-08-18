@@ -161,14 +161,19 @@ Two verifier backends are available:
   score-token distributions, repeats evaluations to reduce variance, decomposes the rubric,
   and uses its probabilistic pivot tournament. This is the paper's method and requires a
   compatible scoring endpoint.
-- **`sampled`.** OMP asks the selected subscription model for a pairwise probability for
-  every unordered candidate pair. Candidate orientation and call order are seeded, up to
-  four comparisons run concurrently, and pairwise-majority wins determine the ranking.
-  A candidate's weakest head-to-head probability breaks majority cycles, followed by
-  expected win probability. Semantic contract violations are decisive. Each claimed bug
-  must cite an exact code path and produce a concrete contract-valid counterexample;
-  validation quality is only a tie-breaker. `--evaluations` repeats the complete round
-  robin. Results are cached after every call.
+- **`sampled`.** OMP materializes each candidate's final repository in a disposable workspace
+  and audits it twice for contract-valid counterexamples. Audits use an OS-sandboxed probe:
+  the candidate workspace is read-only, credentials and user-home data are unavailable,
+  network access is disabled, and only private scratch storage is writable. The first pass
+  must record one completed probe; the second must record three while challenging the first
+  pass's conclusions. OMP then asks the selected subscription model for a pairwise probability
+  for every unordered pair. Pairwise judges receive the combined audits and probe evidence as
+  untrusted leads and must verify each finding against the patch. Candidate orientation and
+  call order are seeded, up to four calls run concurrently, and pairwise-majority wins determine
+  the ranking. A candidate's weakest head-to-head probability breaks majority cycles, followed
+  by expected win probability. Semantic contract violations are decisive; validation quality
+  is only a tie-breaker. `--evaluations` repeats the pairwise round robin. Results are cached
+  after every call.
 
 Both backends use the same three criteria:
 
@@ -180,20 +185,25 @@ Both backends use the same three criteria:
 
 In logprob mode, ranking uses the upstream probabilistic pivot tournament rather than all
 pairs. A cyclic ring pass gives every candidate one comparison, then leaders become pivots.
-The logprob verifier receives each rendered trajectory, final patch, and process result.
 Sampled judgments receive the patch, recorded tool calls/results, and process result while
-excluding assistant reasoning and final claims. This preserves concrete failed checks
-without letting candidate-authored validation narration outweigh implementation semantics.
+excluding assistant reasoning and final claims. Candidate audits inspect each disposable final
+workspace and retain completed sandboxed probe evidence, including nonzero exits. This preserves
+concrete evidence without letting candidate-authored validation narration outweigh implementation
+semantics.
 
 ## Cost and latency model
 
 Total work is `N` generation runs plus verification. Two properties matter when budgeting:
 
 - Logprob verification is comparison heavy and can itself consume substantial reasoning
-  tokens. Sampled verification uses $N(N-1)/2$ subscription calls per evaluation: six calls
-  for four candidates and 28 for eight.
-- Candidates run concurrently. Sampled comparisons also run up to four at a time, so wall
-  clock is lower than the sum of call durations.
+  tokens. Sampled ranking uses $2N + E N(N-1)/2$ verifier invocations for $N$ candidates
+  and $E$ pairwise evaluations: 14 invocations for four candidates and 44 for eight at one
+  evaluation. A live run adds one capability-preflight invocation. The first $2N$ ranking
+  calls are two independent candidate audits; the second pass receives and challenges the
+  first.
+  One verifier invocation can contain multiple provider requests when an audit uses tools.
+- Candidates run concurrently. Each sampled audit pass and the comparison stage run up to
+  four calls at a time, so wall clock is lower than the sum of call durations.
 
 Every run reports candidate and verifier token usage. Sampled-mode `reported_cost_usd` is
 OMP runtime accounting, not an incremental bill for subscription-routed usage. Subscription

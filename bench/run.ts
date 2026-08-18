@@ -210,6 +210,25 @@ function verifierUsd(verifier: VerifierResult | null): number {
 	);
 }
 
+async function materializeAuditRepo(pool: TaskPool, candidate: PoolCandidate): Promise<string> {
+	const repoDir = await prepareTaskRepo(
+		path.join(TASKS_ROOT, pool.taskId),
+		pool.generatedBy.visibleTests,
+	);
+	if (!candidate.patch.trim()) return repoDir;
+	const patchPath = path.join(repoDir, ".candidate.patch");
+	try {
+		await Bun.write(patchPath, candidate.patch);
+		await requireCommand(["git", "apply", "--binary", patchPath], repoDir);
+		return repoDir;
+	} catch (error) {
+		await rm(repoDir, { recursive: true, force: true });
+		throw new Error(`Cannot materialize candidate ${candidate.index + 1} for executable audit`, { cause: error });
+	} finally {
+		await rm(patchPath, { force: true });
+	}
+}
+
 async function rankPool(
 	pool: TaskPool,
 	options: BenchOptions,
@@ -225,21 +244,30 @@ async function rankPool(
 		seed: options.seed,
 		cachePath,
 	};
-	const verifier = options.verifierBackend === "sampled"
-		? await verifyCandidatesSampled({
-				...common,
-				candidates: eligible.map(composeSampledVerifierEvidence),
-				model: options.verifierModel,
-				thinking: options.verifierThinking,
-				cwd: REPO_ROOT,
-			})
-		: await verifyCandidates({
-				...common,
-				candidates: eligible.map(composeVerifierTrajectory),
-				endpoint: endpoint!,
-				pivots: Math.min(options.pivots, eligible.length),
-			});
-	return { verifier, eligible };
+	if (options.verifierBackend !== "sampled") {
+		const verifier = await verifyCandidates({
+			...common,
+			candidates: eligible.map(composeVerifierTrajectory),
+			endpoint: endpoint!,
+			pivots: Math.min(options.pivots, eligible.length),
+		});
+		return { verifier, eligible };
+	}
+	const candidateCwds: string[] = [];
+	try {
+		for (const candidate of eligible) candidateCwds.push(await materializeAuditRepo(pool, candidate));
+		const verifier = await verifyCandidatesSampled({
+			...common,
+			candidates: eligible.map(composeSampledVerifierEvidence),
+			model: options.verifierModel,
+			thinking: options.verifierThinking,
+			cwd: REPO_ROOT,
+			candidateCwds,
+		});
+		return { verifier, eligible };
+	} finally {
+		await Promise.all(candidateCwds.map(candidateCwd => rm(candidateCwd, { recursive: true, force: true })));
+	}
 }
 
 function summarize(pool: TaskPool, eligible: PoolCandidate[], verifier: VerifierResult | null, wallClockMs: number, ranked: boolean): TaskOutcome {
