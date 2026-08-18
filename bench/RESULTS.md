@@ -3,7 +3,7 @@
 Every number here came from `bench/run.ts` on this repository. Nothing is copied from the
 upstream paper, and none of this reproduces the upstream Terminal-Bench figures.
 
-## Setup shared by all runs
+## Setup for initial runs A-F
 
 | Field | Value |
 | --- | --- |
@@ -34,7 +34,7 @@ absolute local paths.
 
 Generation cost was stable at $0.0084 to $0.0119 per candidate run, so a 4-candidate pool on
 one of these small tasks costs about $0.04 to $0.05 to produce and $0.05 to $0.08 including
-verification. Total spend for everything on this page was about $0.56.
+verification. Total spend for the initial A-F runs was about $0.56.
 
 Verification was 25 to 51 percent of live-run cost, which is higher than the intuition that
 verification is negligible. The reason is visible in the token accounting for the
@@ -103,3 +103,78 @@ For statistical power at the observed per-pool cost, 20 discriminating tasks at 
 would cost roughly $1.00 to $1.60 and, at the observed sequential latency, take 1 to 4 hours
 of wall clock. Task parallelism is the obvious next optimization, since only the candidates
 within a task currently run concurrently.
+
+## v0.1.1 fixed-pool verifier sweep
+
+This sweep isolates selection cost and behavior from generation. A generation-only run built
+24 candidates across six tasks for $0.2066; only `retry-transient` and `semver-satisfies`
+were discriminating. Every re-ranking below used those same eight stored trajectories and
+oracle labels, so no candidate was generated or labeled again.
+
+| Field | Value |
+| --- | --- |
+| Pool source | `de714f8`, run `2026-08-18T03-31-45-413Z` |
+| Ranking source | `578671e` (`v0.1.1`), clean tree |
+| Built/runtime identity | `1bc44850fc7d36c713bd4bf9ba6312b6e96a19e35ee11af957ca720fa10918db`; local interpreted TypeScript; omp/17.3.4; Bun 1.3.14; darwin arm64 |
+| Candidate pool | 4 candidates per task, visible tests retained, thinking off, 45s candidate limit |
+| Verifier | `deepseek/deepseek-v4-flash`, 2 pivots, seeds 0 through 4 |
+| Iterations | One run per seed and setting, no discarded warmups |
+| Execution | Five seed runs concurrent; the two tasks inside each run sequential |
+| Cache state | Reused trajectories with 97.7% to 99.3% verifier input cache hits; this is not a cold-start comparison |
+| Cost basis | Provider list-price calculation from scorecards, not an invoice |
+
+Pool hashes:
+
+- `retry-transient`: `f76989059639739bfab75f8b25811b0f08e2fed3d943bfb1a834781141daf89e`
+- `semver-satisfies`: `fa2698546a6019e1f34d8f390343124940d3b9a5f60830b5b01ac42c6256c59e`
+
+### Selection result
+
+| Setting | Attempts | Successful runs | Selection events | Correct selections | Random pass@1 | Oracle pass@4 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 evaluation per criterion | 5 | 5 | 10 | 5 (50%) | 62.5% | 100% |
+| 3 evaluations per criterion | 5 | 4 | 8 | 4 (50%) | 62.5% | 100% |
+
+Every successful run selected a passing `semver-satisfies` candidate and a failing
+`retry-transient` candidate. Repeated evaluation did not improve selection correctness on
+these fixed pools. This is 18 selection events over two reused tasks, not 18 independent
+tasks and not a general accuracy estimate.
+
+The `retry-transient` failure was systematic. Its two failing candidates implemented the
+backoff exponent one step too high, while the two passing candidates used
+`baseDelayMs * 2 ** (attempt - 1)`. All verifier settings still preferred a failing patch.
+The visible trajectories did not contain the hidden boundary assertion that exposed the
+off-by-one error, so this result is consistent with the verifier rewarding plausible code
+and visible validation without recovering an unobserved contract edge case.
+
+### Incremental cost of repeated evaluation
+
+The comparison below uses the same successful seeds, 0, 2, 3, and 4, on both settings.
+Values are means per two-task re-ranking run.
+
+| Verifier work | 1 evaluation | 3 evaluations | Ratio |
+| --- | --- | --- | --- |
+| Calls | 43.5 | 132.8 | 3.05x |
+| Input tokens | 536,077 | 1,639,421 | 3.06x |
+| Output tokens | 368,238 | 1,070,259 | 2.91x |
+| Reasoning tokens | 358,391 | 1,040,152 | 2.90x |
+| Verifier cost | $0.1063 | $0.3058 | 2.88x |
+| Sum of task wall clocks | 1,142.9s | 1,237.4s | 1.08x |
+
+Three evaluations therefore cost an incremental $0.1995, 1.10 million input tokens, and
+0.70 million output tokens per two-task run. Cost and tokens were approximately tripled.
+Wall clock rose only 8.3% because verifier calls run concurrently, but each two-task
+re-ranking still took about 19 to 21 minutes and these seed runs also shared provider
+capacity concurrently.
+
+One of five 3-evaluation attempts failed after DeepSeek reasoning consumed the 32,768-token
+budget before answer logprobs were emitted. Its partial verifier spend is unknown and is
+excluded from all cost totals. Known spend for the six-task pool bank and successful sweep
+runs was $1.9490, plus that failed attempt.
+
+The result does not support raising the default above one evaluation. On these pools,
+three evaluations increased cost and token use by roughly 3x, produced no correctness gain,
+and added a failure mode.
+
+Machine-readable aggregate: `bench/results/verifier-sweep-v0.1.1.json`. Raw scorecards and
+the failed run's partial caches remain under `bench/results/2026-08-18T04-*/`.
