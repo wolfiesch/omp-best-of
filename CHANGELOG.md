@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - `--verifier-backend sampled` ranks candidates through seeded, cached, all-pairs judgments from an OMP model route, including subscription-authenticated models that do not expose token logprobs.
 - Benchmark scorecards distinguish sampled runtime accounting from per-token API billing and record the sampled judge's thinking level, timeout, concurrency, and schedule.
+- Eight hidden-contract fixtures expand coverage across bounded concurrency, circuit breaking, deterministic serialization, JSON Patch, singleflight deduplication, byte-stream chunking, stable priority queues, and ring buffers.
 
 ### Changed
 

@@ -56,6 +56,11 @@ Two guards keep a labeling failure from turning into a fake result:
 `tasks/<id>/reference` is never copied into a candidate worktree. It exists so the oracle is
 provably satisfiable.
 
+Every oracle case should map to an explicit sentence in `task.md`, including rejection,
+mutation, identity, ordering, concurrency, and malformed-input semantics. When an oracle
+changes, rescore every stored candidate before reusing that pool; persisted `passed` labels
+are generation-time data and are not refreshed by `--reuse`.
+
 ## Difficulty controls
 
 A pool only carries information when candidates disagree. Two flags reduce the candidate's
@@ -85,4 +90,5 @@ tasks/<id>/
   reference/<module>.js       reference solution, harness only
 ```
 
-Then run `bun test test/bench-fixtures.test.ts`, which enforces the two properties above.
+Then run `bun test test/bench-fixtures.test.ts`, which proves that the shipped visible tests
+pass, the shipped defect fails the hidden oracle, and the reference solution passes it.
