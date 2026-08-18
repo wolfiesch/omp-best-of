@@ -42,7 +42,7 @@ function parent(root, pathTokens) {
 	return { current, key: pathTokens.at(-1) };
 }
 function equal(left, right) {
-	if (Object.is(left, right)) return true;
+	if (left === right) return true;
 	if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
 	if (Array.isArray(left) !== Array.isArray(right)) return false;
 	const leftKeys = Object.keys(left); const rightKeys = Object.keys(right);

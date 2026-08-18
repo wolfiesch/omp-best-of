@@ -22,8 +22,15 @@ async function patchFor(taskDir: string, edits: { file: string; content: string 
 	}
 }
 
-test("every task ships a prompt, visible tests, an oracle, and a reference solution", () => {
+test("every task ships a prompt, visible tests, an oracle, and a reference solution", async () => {
 	expect(taskIds.length).toBeGreaterThan(0);
+	for (const taskId of taskIds) {
+		const taskDir = path.join(TASKS_ROOT, taskId);
+		expect((await Bun.file(path.join(taskDir, "task.md")).text()).trim().length).toBeGreaterThan(0);
+		expect((await visibleTestFiles(taskDir)).length).toBeGreaterThan(0);
+		expect((await readdir(path.join(taskDir, "oracle"))).some(file => file.endsWith(".test.js"))).toBe(true);
+		expect((await readdir(path.join(taskDir, "reference"))).some(file => file.endsWith(".js"))).toBe(true);
+	}
 });
 
 for (const taskId of taskIds) {

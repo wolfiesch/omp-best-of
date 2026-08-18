@@ -322,3 +322,49 @@ that SHA-pinned evidence is `bench/results/verifier-repair-rescore.json`.
 
 Machine-readable aggregate: `bench/results/luna-sampled-verifier-repair.json`. Raw scorecards
 are under the nine run directories named in that aggregate.
+
+## Expanded hidden-contract verifier benchmark
+
+Eight additional fixtures broadened the contract surface to bounded concurrency, circuit
+breaking, deterministic serialization, JSON Patch, singleflight identity, byte-stream
+chunking, stable priority queues, and ring buffers. The final fixed-pool sweep ranked five
+candidates per task for three seeds with one complete sampled pairwise round per seed.
+
+| Scope | Selections | Random pass@1 | Verifier-selected | Oracle pass@5 |
+| --- | ---: | ---: | ---: | ---: |
+| All eight tasks | 24 | 50.0% | **21/24 (87.5%)** | 100.0% |
+| Five harder pools | 15 | 32.0% | **12/15 (80.0%)** | 100.0% |
+
+The five-pool subset excludes `circuit-breaker`, `promise-pool`, and `priority-queue`, whose
+generated pools each contained four passing candidates. Two of those pools had a no-op
+candidate, making selection materially easier. The full eight-task number is therefore useful
+as a system check, not a difficulty-normalized accuracy estimate.
+
+On the same four fixed pools and seeds, baseline source `8227610` selected 9/12
+oracle-passing candidates. Source `761cad5`, which adds recorded tool calls/results while
+excluding assistant reasoning and final claims, selected 12/12. Candidate-pool files were
+byte-identical across the two sweeps. Reported verifier cost rose 15.8% and input tokens rose
+5.5%. This is a source-version association on one fixed bank, not a causal ablation or general
+performance claim. The aggregate records the complete five-file source diff and blob hashes.
+
+`json-patch` remained a systematic failure at 0/3. The only oracle-passing candidate was never
+selected. Pairwise judgments repeatedly missed a primitive structural-equality defect in one
+competitor and over-weighted an explicit malformed-operation guard in another. This is the
+clearest remaining verifier weakness: long, dense semantic implementations still exceed the
+reliability of one low-thinking static pairwise round.
+
+Across all 24 selections, verification made 240 pairwise comparisons and 258 provider requests,
+processed 12.65M input tokens (8.90M uncached and 3.75M cached), emitted 123.6K output tokens,
+and recorded 83.7K reasoning tokens. OMP runtime accounting was $2.0030, or $0.0835 per task
+selection. This is subscription-routed runtime accounting, not a per-token invoice. Candidate
+generation was reused and not spent during these rank runs.
+
+All final runs used clean source `761cad5`, OMP binary hash
+`a547f8fa4457e1f96886a7ece04a27dc110f80c29b395daeb223f4a98e802a24`,
+omp/17.3.4, Bun 1.3.14, and Linux x64 on the remote benchmark checkout. Runs were sequential;
+each task used four verifier workers and a two-minute per-call timeout. Candidate pools came from
+`2026-08-18T11-55-32-529Z`, `2026-08-18T12-03-43-176Z`, and
+`2026-08-18T12-49-05-204Z`.
+
+Machine-readable aggregate: `bench/results/expanded-recorded-evidence.json`. Raw scorecards are
+under the nine final run directories and six same-pool comparison directories named there.

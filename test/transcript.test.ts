@@ -9,6 +9,17 @@ describe("JSON event transcript", () => {
 				type: "message_end",
 				message: {
 					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "private" },
+						{ type: "toolCall", name: "bash", arguments: { command: "bun test" } },
+					],
+				},
+			},
+			{ type: "message_end", message: { role: "toolResult", content: "1 pass" } },
+			{
+				type: "message_end",
+				message: {
+					role: "assistant",
 					content: [{ type: "text", text: "Done" }],
 					usage: {
 						input: 100,
@@ -26,6 +37,7 @@ describe("JSON event transcript", () => {
 		const parsed = parseJsonTranscript(events);
 		expect(parsed.transcript).toContain("## user\nFix it");
 		expect(parsed.finalResponse).toBe("Done");
+		expect(parsed.recordedToolEvidence).toBe('[tool bash] {"command":"bun test"}\n\n## toolResult\n1 pass');
 		expect(parsed.usage).toEqual({
 			requests: 1,
 			inputTokens: 100,

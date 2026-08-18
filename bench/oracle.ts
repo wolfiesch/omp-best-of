@@ -30,10 +30,9 @@ async function countTests(files: string[]): Promise<number> {
 	return total;
 }
 
-function countRan(output: string): number {
-	const pass = Number(output.match(/(\d+) pass/)?.[1] ?? 0);
-	const fail = Number(output.match(/(\d+) fail/)?.[1] ?? 0);
-	return pass + fail;
+async function countReportedTests(reportPath: string): Promise<number> {
+	const report = await Bun.file(reportPath).text();
+	return report.match(/<testcase(?:\s|>)/g)?.length ?? 0;
 }
 
 export async function visibleTestFiles(taskDir: string): Promise<string[]> {
@@ -101,12 +100,20 @@ export async function scoreCandidate(taskDir: string, repoDir: string, patch: st
 			...oracleFiles.map(file => path.join(oracleDir, file)),
 		]);
 
-		const result = await runCommand(["bun", "test", ...visible, ORACLE_DIR], {
+		const reportPath = path.join(scoringRoot, "results.junit.xml");
+		const result = await runCommand([
+			"bun",
+			"test",
+			"--reporter=junit",
+			`--reporter-outfile=${reportPath}`,
+			...visible,
+			ORACLE_DIR,
+		], {
 			cwd: scoringDir,
 			timeoutMs: ORACLE_TIMEOUT_MS,
 		});
 		const output = `${result.stdout}\n${result.stderr}`.trim();
-		const ran = countRan(output);
+		const ran = await countReportedTests(reportPath);
 		// A silently skipped oracle file would label every candidate as passing, so refuse to guess.
 		if (ran < expected) {
 			throw new Error(`Oracle for ${path.basename(taskDir)} ran ${ran} of ${expected} tests; refusing to label. Output:\n${output.slice(0, 800)}`);

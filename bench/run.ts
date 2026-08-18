@@ -80,6 +80,7 @@ interface PoolCandidate {
 	index: number;
 	exitCode: number;
 	durationMs: number;
+	recordedToolEvidence?: string;
 	patch: string;
 	transcript: string;
 	stderr: string;
@@ -476,6 +477,7 @@ async function generate(
 				exitCode: candidate.exitCode,
 				durationMs: candidate.durationMs,
 				patch: candidate.patch,
+				recordedToolEvidence: candidate.recordedToolEvidence,
 				transcript: candidate.transcript,
 				stderr: candidate.stderr,
 				usage: candidate.usage,

@@ -43,6 +43,7 @@ test("handles array append, insertion, replacement, and removal", () => {
 test("supports root replacement and structural tests", () => {
 	expect(applyPatch({ a: 1 }, [{ op: "test", path: "", value: { a: 1 } }, { op: "replace", path: "", value: [1, 2] }])).toEqual([1, 2]);
 	expect(applyPatch(null, [{ op: "add", path: "", value: { ok: true } }])).toEqual({ ok: true });
+	expect(() => applyPatch(-0, [{ op: "test", path: "", value: 0 }])).not.toThrow();
 });
 
 test("structural tests distinguish arrays from objects", () => {

@@ -52,6 +52,7 @@ export interface CandidateResult {
 	exitCode: number;
 	durationMs: number;
 	transcript: string;
+	recordedToolEvidence: string;
 	finalResponse: string;
 	patch: string;
 	stderr: string;

@@ -116,6 +116,7 @@ async function runCandidate(
 		exitCode: patchError ? 1 : processResult.exitCode,
 		durationMs: Date.now() - started,
 		transcript: parsed.transcript,
+		recordedToolEvidence: parsed.recordedToolEvidence,
 		finalResponse: parsed.finalResponse,
 		patch,
 		stderr: `${processResult.stderr}${patchError ? `\n${patchError}` : ""}`.trim(),
@@ -138,7 +139,7 @@ export function composeVerifierTrajectory(candidate: Pick<CandidateResult, "tran
 		.join("\n\n");
 }
 
-/** Extracts recorded tool invocations/results while excluding assistant reasoning and final claims. */
+/** Extracts recorded tool invocations/results from legacy rendered transcripts. */
 export function extractRecordedToolEvidence(transcript: string, maxChars = 12_000): string {
 	const sections = transcript.split(/(?=^## )/m);
 	const evidence: string[] = [];
@@ -155,8 +156,15 @@ export function extractRecordedToolEvidence(transcript: string, maxChars = 12_00
 }
 
 /** Keeps sampled judgments focused on code and recorded execution instead of assistant narration. */
-export function composeSampledVerifierEvidence(candidate: Pick<CandidateResult, "transcript" | "patch" | "exitCode" | "stderr">): string {
-	const toolEvidence = extractRecordedToolEvidence(candidate.transcript);
+export function composeSampledVerifierEvidence(candidate: {
+	transcript: string;
+	recordedToolEvidence?: string;
+	patch: string;
+	exitCode: number;
+	stderr: string;
+}): string {
+	const recorded = candidate.recordedToolEvidence ?? extractRecordedToolEvidence(candidate.transcript);
+	const toolEvidence = recorded.length <= 12_000 ? recorded : `[earlier tool evidence omitted]\n${recorded.slice(-12_000)}`;
 	return [
 		"## Final repository patch",
 		candidate.patch || "(no repository changes)",

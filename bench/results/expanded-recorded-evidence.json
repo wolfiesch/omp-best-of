@@ -1,0 +1,596 @@
+{
+  "claimScope": "Expanded eight-task fixed-pool sampled-verifier evaluation; three seeds; not general end-to-end accuracy. Two gap-pool failures are no-op candidates.",
+  "identity": {
+    "sourceHash": "761cad5",
+    "sourceDirty": false,
+    "builtHash": "a547f8fa4457e1f96886a7ece04a27dc110f80c29b395daeb223f4a98e802a24",
+    "ompVersion": "omp/17.3.4",
+    "bunVersion": "1.3.14",
+    "platform": "linux x64",
+    "verifierModel": "openai-codex/gpt-5.6-luna",
+    "verifierBackend": "sampled",
+    "verifierThinking": "low",
+    "roundsPerSeed": 1
+  },
+  "poolSources": [
+    "2026-08-18T11-55-32-529Z",
+    "2026-08-18T12-03-43-176Z",
+    "2026-08-18T12-49-05-204Z"
+  ],
+  "scorecardRuns": [
+    "2026-08-18T13-04-33-111Z",
+    "2026-08-18T13-08-22-918Z",
+    "2026-08-18T13-09-26-083Z",
+    "2026-08-18T13-12-31-315Z",
+    "2026-08-18T13-16-26-694Z",
+    "2026-08-18T13-17-42-967Z",
+    "2026-08-18T13-21-07-379Z",
+    "2026-08-18T13-25-01-094Z",
+    "2026-08-18T13-26-13-396Z"
+  ],
+  "summary": {
+    "selections": 24,
+    "correctSelections": 21,
+    "selectionAccuracy": 0.875,
+    "randomPass1": 0.5,
+    "oraclePassN": 1.0,
+    "verifierRuntimeAccountingUsd": 2.00299652,
+    "meanVerifierRuntimeAccountingUsdPerTask": 0.08345818833333334,
+    "meanWallClockSecondsPerTask": 60.096916666666665,
+    "providerRequests": 258,
+    "inputTokens": 12652207,
+    "cachedInputTokens": 3754496,
+    "uncachedInputTokens": 8897711,
+    "outputTokens": 123637,
+    "reasoningTokens": 83736,
+    "comparisons": 240
+  },
+  "hardFiveTaskSubset": {
+    "selections": 15,
+    "correctSelections": 12,
+    "selectionAccuracy": 0.8,
+    "randomPass1": 0.32
+  },
+  "byTask": {
+    "circuit-breaker": {
+      "correctSelections": 3,
+      "selections": 3,
+      "selectionAccuracy": 1.0,
+      "randomPass1": 0.8,
+      "passedCandidates": 4,
+      "candidates": 5
+    },
+    "json-patch": {
+      "correctSelections": 0,
+      "selections": 3,
+      "selectionAccuracy": 0.0,
+      "randomPass1": 0.2,
+      "passedCandidates": 1,
+      "candidates": 5
+    },
+    "priority-queue": {
+      "correctSelections": 3,
+      "selections": 3,
+      "selectionAccuracy": 1.0,
+      "randomPass1": 0.8,
+      "passedCandidates": 4,
+      "candidates": 5
+    },
+    "promise-pool": {
+      "correctSelections": 3,
+      "selections": 3,
+      "selectionAccuracy": 1.0,
+      "randomPass1": 0.8,
+      "passedCandidates": 4,
+      "candidates": 5
+    },
+    "ring-buffer": {
+      "correctSelections": 3,
+      "selections": 3,
+      "selectionAccuracy": 1.0,
+      "randomPass1": 0.6,
+      "passedCandidates": 3,
+      "candidates": 5
+    },
+    "singleflight": {
+      "correctSelections": 3,
+      "selections": 3,
+      "selectionAccuracy": 1.0,
+      "randomPass1": 0.2,
+      "passedCandidates": 1,
+      "candidates": 5
+    },
+    "stable-stringify": {
+      "correctSelections": 3,
+      "selections": 3,
+      "selectionAccuracy": 1.0,
+      "randomPass1": 0.2,
+      "passedCandidates": 1,
+      "candidates": 5
+    },
+    "stream-chunker": {
+      "correctSelections": 3,
+      "selections": 3,
+      "selectionAccuracy": 1.0,
+      "randomPass1": 0.4,
+      "passedCandidates": 2,
+      "candidates": 5
+    }
+  },
+  "selections": [
+    {
+      "runId": "2026-08-18T13-04-33-111Z",
+      "seed": 0,
+      "taskId": "ring-buffer",
+      "passedCandidates": 3,
+      "candidates": 5,
+      "randomPass1": 0.6,
+      "verifierIndex": 3,
+      "verifierPass": true,
+      "verifierCostUsd": 0.11104408000000002,
+      "wallClockMs": 52170,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-04-33-111Z",
+      "seed": 0,
+      "taskId": "singleflight",
+      "passedCandidates": 1,
+      "candidates": 5,
+      "randomPass1": 0.2,
+      "verifierIndex": 1,
+      "verifierPass": true,
+      "verifierCostUsd": 0.08034028000000001,
+      "wallClockMs": 57038,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-04-33-111Z",
+      "seed": 0,
+      "taskId": "stable-stringify",
+      "passedCandidates": 1,
+      "candidates": 5,
+      "randomPass1": 0.2,
+      "verifierIndex": 1,
+      "verifierPass": true,
+      "verifierCostUsd": 0.05957280000000001,
+      "wallClockMs": 59969,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-04-33-111Z",
+      "seed": 0,
+      "taskId": "stream-chunker",
+      "passedCandidates": 2,
+      "candidates": 5,
+      "randomPass1": 0.4,
+      "verifierIndex": 1,
+      "verifierPass": true,
+      "verifierCostUsd": 0.0734508,
+      "wallClockMs": 55723,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-08-22-918Z",
+      "seed": 0,
+      "taskId": "json-patch",
+      "passedCandidates": 1,
+      "candidates": 5,
+      "randomPass1": 0.2,
+      "verifierIndex": 3,
+      "verifierPass": false,
+      "verifierCostUsd": 0.106226,
+      "wallClockMs": 59563,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-09-26-083Z",
+      "seed": 0,
+      "taskId": "circuit-breaker",
+      "passedCandidates": 4,
+      "candidates": 5,
+      "randomPass1": 0.8,
+      "verifierIndex": 2,
+      "verifierPass": true,
+      "verifierCostUsd": 0.089742,
+      "wallClockMs": 58691,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-09-26-083Z",
+      "seed": 0,
+      "taskId": "priority-queue",
+      "passedCandidates": 4,
+      "candidates": 5,
+      "randomPass1": 0.8,
+      "verifierIndex": 1,
+      "verifierPass": true,
+      "verifierCostUsd": 0.08408156,
+      "wallClockMs": 64715,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-09-26-083Z",
+      "seed": 0,
+      "taskId": "promise-pool",
+      "passedCandidates": 4,
+      "candidates": 5,
+      "randomPass1": 0.8,
+      "verifierIndex": 1,
+      "verifierPass": true,
+      "verifierCostUsd": 0.09209376,
+      "wallClockMs": 57797,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-12-31-315Z",
+      "seed": 1,
+      "taskId": "ring-buffer",
+      "passedCandidates": 3,
+      "candidates": 5,
+      "randomPass1": 0.6,
+      "verifierIndex": 3,
+      "verifierPass": true,
+      "verifierCostUsd": 0.09401740000000001,
+      "wallClockMs": 49884,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-12-31-315Z",
+      "seed": 1,
+      "taskId": "singleflight",
+      "passedCandidates": 1,
+      "candidates": 5,
+      "randomPass1": 0.2,
+      "verifierIndex": 1,
+      "verifierPass": true,
+      "verifierCostUsd": 0.08149208000000001,
+      "wallClockMs": 63791,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-12-31-315Z",
+      "seed": 1,
+      "taskId": "stable-stringify",
+      "passedCandidates": 1,
+      "candidates": 5,
+      "randomPass1": 0.2,
+      "verifierIndex": 1,
+      "verifierPass": true,
+      "verifierCostUsd": 0.09654652000000001,
+      "wallClockMs": 55301,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-12-31-315Z",
+      "seed": 1,
+      "taskId": "stream-chunker",
+      "passedCandidates": 2,
+      "candidates": 5,
+      "randomPass1": 0.4,
+      "verifierIndex": 4,
+      "verifierPass": true,
+      "verifierCostUsd": 0.060310279999999994,
+      "wallClockMs": 61780,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-16-26-694Z",
+      "seed": 1,
+      "taskId": "json-patch",
+      "passedCandidates": 1,
+      "candidates": 5,
+      "randomPass1": 0.2,
+      "verifierIndex": 3,
+      "verifierPass": false,
+      "verifierCostUsd": 0.09936372,
+      "wallClockMs": 72422,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-17-42-967Z",
+      "seed": 1,
+      "taskId": "circuit-breaker",
+      "passedCandidates": 4,
+      "candidates": 5,
+      "randomPass1": 0.8,
+      "verifierIndex": 2,
+      "verifierPass": true,
+      "verifierCostUsd": 0.0537528,
+      "wallClockMs": 65571,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-17-42-967Z",
+      "seed": 1,
+      "taskId": "priority-queue",
+      "passedCandidates": 4,
+      "candidates": 5,
+      "randomPass1": 0.8,
+      "verifierIndex": 2,
+      "verifierPass": true,
+      "verifierCostUsd": 0.06870480000000001,
+      "wallClockMs": 71742,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-17-42-967Z",
+      "seed": 1,
+      "taskId": "promise-pool",
+      "passedCandidates": 4,
+      "candidates": 5,
+      "randomPass1": 0.8,
+      "verifierIndex": 2,
+      "verifierPass": true,
+      "verifierCostUsd": 0.069356,
+      "wallClockMs": 61683,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-21-07-379Z",
+      "seed": 2,
+      "taskId": "ring-buffer",
+      "passedCandidates": 3,
+      "candidates": 5,
+      "randomPass1": 0.6,
+      "verifierIndex": 3,
+      "verifierPass": true,
+      "verifierCostUsd": 0.08540680000000002,
+      "wallClockMs": 54825,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-21-07-379Z",
+      "seed": 2,
+      "taskId": "singleflight",
+      "passedCandidates": 1,
+      "candidates": 5,
+      "randomPass1": 0.2,
+      "verifierIndex": 1,
+      "verifierPass": true,
+      "verifierCostUsd": 0.06517520000000002,
+      "wallClockMs": 59651,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-21-07-379Z",
+      "seed": 2,
+      "taskId": "stable-stringify",
+      "passedCandidates": 1,
+      "candidates": 5,
+      "randomPass1": 0.2,
+      "verifierIndex": 1,
+      "verifierPass": true,
+      "verifierCostUsd": 0.07386,
+      "wallClockMs": 57695,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-21-07-379Z",
+      "seed": 2,
+      "taskId": "stream-chunker",
+      "passedCandidates": 2,
+      "candidates": 5,
+      "randomPass1": 0.4,
+      "verifierIndex": 4,
+      "verifierPass": true,
+      "verifierCostUsd": 0.09418560000000001,
+      "wallClockMs": 55826,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-25-01-094Z",
+      "seed": 2,
+      "taskId": "json-patch",
+      "passedCandidates": 1,
+      "candidates": 5,
+      "randomPass1": 0.2,
+      "verifierIndex": 4,
+      "verifierPass": false,
+      "verifierCostUsd": 0.08661616,
+      "wallClockMs": 67961,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-26-13-396Z",
+      "seed": 2,
+      "taskId": "circuit-breaker",
+      "passedCandidates": 4,
+      "candidates": 5,
+      "randomPass1": 0.8,
+      "verifierIndex": 5,
+      "verifierPass": true,
+      "verifierCostUsd": 0.09127548,
+      "wallClockMs": 62225,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-26-13-396Z",
+      "seed": 2,
+      "taskId": "priority-queue",
+      "passedCandidates": 4,
+      "candidates": 5,
+      "randomPass1": 0.8,
+      "verifierIndex": 1,
+      "verifierPass": true,
+      "verifierCostUsd": 0.0886788,
+      "wallClockMs": 59124,
+      "comparisons": 10
+    },
+    {
+      "runId": "2026-08-18T13-26-13-396Z",
+      "seed": 2,
+      "taskId": "promise-pool",
+      "passedCandidates": 4,
+      "candidates": 5,
+      "randomPass1": 0.8,
+      "verifierIndex": 2,
+      "verifierPass": true,
+      "verifierCostUsd": 0.0977036,
+      "wallClockMs": 57179,
+      "comparisons": 10
+    }
+  ],
+  "costNote": "Verifier cost is OMP runtime accounting for subscription-routed usage, not a per-token invoice. Generation was reused and not spent in these rank runs.",
+  "latencyNote": "Runs were sequential on the same clean Linux x64 VPS checkout; model/provider latency remains externally variable.",
+  "samePoolRecordedEvidenceComparison": {
+    "scope": "Same four fixed pools, same verifier model, one round, and seeds 0/1/2. This records an association between two source versions, not a causal ablation.",
+    "beforeSourceHash": "8227610",
+    "afterSourceHash": "761cad5",
+    "beforeRuns": [
+      "2026-08-18T12-49-27-791Z",
+      "2026-08-18T12-54-13-687Z",
+      "2026-08-18T12-58-30-905Z"
+    ],
+    "afterRuns": [
+      "2026-08-18T13-04-33-111Z",
+      "2026-08-18T13-12-31-315Z",
+      "2026-08-18T13-21-07-379Z"
+    ],
+    "before": {
+      "selections": 12,
+      "correctSelections": 9,
+      "selectionAccuracy": 0.75,
+      "verifierRuntimeAccountingUsd": 0.8422521600000001,
+      "meanWallClockSecondsPerTask": 66.79275,
+      "providerRequests": 140,
+      "inputTokens": 5955540,
+      "cachedInputTokens": 2359808,
+      "uncachedInputTokens": 3595732,
+      "outputTokens": 63258,
+      "reasoningTokens": 41026
+    },
+    "after": {
+      "selections": 12,
+      "correctSelections": 12,
+      "selectionAccuracy": 1.0,
+      "verifierRuntimeAccountingUsd": 0.9754018400000001,
+      "meanWallClockSecondsPerTask": 56.97108333333333,
+      "providerRequests": 129,
+      "inputTokens": 6281242,
+      "cachedInputTokens": 1944832,
+      "uncachedInputTokens": 4336410,
+      "outputTokens": 57686,
+      "reasoningTokens": 37718
+    },
+    "deltas": {
+      "correctSelections": 3,
+      "accuracyPoints": 25.0,
+      "verifierCostPercent": 15.808766818716125,
+      "inputTokensPercent": 5.468891150088817,
+      "meanWallClockPercent": -14.704689755499912
+    },
+    "sourceProvenance": {
+      "diffRange": "8227610..761cad5",
+      "diffSha256": "ced0813c17a78a34b98968490d468eb9582ebbe4d3cdfb725302ee8303e0928a",
+      "changedFiles": [
+        "CHANGELOG.md",
+        "README.md",
+        "src/runner.ts",
+        "src/sampled-verifier.ts",
+        "test/sampled-verifier.test.ts"
+      ],
+      "runtimeBlobIds": {
+        "src/runner.ts": {
+          "before": "223296af32b79746952dc9d214f9f728989ff73d",
+          "after": "3ba68a2e3ffe1a7dd14dc56c57314cd7c4804b1d"
+        },
+        "src/sampled-verifier.ts": {
+          "before": "e3791338280a570c47602af0d52845082eeed43b",
+          "after": "b4bb9b0f6edc49396fca7e38a3ce4be09332fe1b"
+        }
+      },
+      "runtimeChange": "The after version adds recorded tool-call/result evidence, excludes assistant narration, updates prompt instructions, and advances the prompt/cache version."
+    }
+  },
+  "poolManifest": [
+    {
+      "taskId": "circuit-breaker",
+      "sourceRunId": "2026-08-18T12-49-05-204Z",
+      "poolSha256": "ac5a8f877e004402c8be712e8f19077c183db99025a1bd54497b31e57bf40cce",
+      "candidatePatchSetSha256": "4adc594ad57be8b2b9bb569e3d8b3dec0202339c997a00a5c058ede9952a2372",
+      "generator": "openai-codex/gpt-5.6-luna",
+      "thinking": "minimal",
+      "visibleTests": false,
+      "candidates": 5,
+      "currentOraclePasses": 4
+    },
+    {
+      "taskId": "json-patch",
+      "sourceRunId": "2026-08-18T12-03-43-176Z",
+      "poolSha256": "2963a095256663692624a257be23a80254f7f031badae6aef068ec6d14a5ad2d",
+      "candidatePatchSetSha256": "42d80bfc65d504d15b9d1938ada54079d36d2ba4f7ecde71621512148452786e",
+      "generator": "openai-codex/gpt-5.6-luna",
+      "thinking": "low",
+      "visibleTests": true,
+      "candidates": 5,
+      "currentOraclePasses": 1
+    },
+    {
+      "taskId": "priority-queue",
+      "sourceRunId": "2026-08-18T12-49-05-204Z",
+      "poolSha256": "229546c79b9f701ba3770dd9f048b09c4d88b535a3e423a38b9eb50ba1ccca3f",
+      "candidatePatchSetSha256": "11d2f221cfd9bdd22319a84011906a36d75f0f2b9f1a09a053de3195581a29d8",
+      "generator": "openai-codex/gpt-5.6-luna",
+      "thinking": "minimal",
+      "visibleTests": false,
+      "candidates": 5,
+      "currentOraclePasses": 4
+    },
+    {
+      "taskId": "promise-pool",
+      "sourceRunId": "2026-08-18T12-49-05-204Z",
+      "poolSha256": "1230c7c93de0bb84c7a5b68c118e1129a8865cd8ef70b6e7108e2bb9b12d031a",
+      "candidatePatchSetSha256": "da2aa7cc1a6486c42d0d0b034bbac4eeeaad8ba9654d658e77a2e2ae5608d40e",
+      "generator": "openai-codex/gpt-5.6-luna",
+      "thinking": "minimal",
+      "visibleTests": false,
+      "candidates": 5,
+      "currentOraclePasses": 4
+    },
+    {
+      "taskId": "ring-buffer",
+      "sourceRunId": "2026-08-18T11-55-32-529Z",
+      "poolSha256": "6000d1e8b821c0f137c4d201ce073db2e48913030214183571dda8d2e84b3e56",
+      "candidatePatchSetSha256": "4dda11f5cb527f1cfbd72720f4920e2bceb3d801e6342cc093647d282b32bda1",
+      "generator": "google-antigravity/gemini-2.5-flash-lite",
+      "thinking": "minimal",
+      "visibleTests": true,
+      "candidates": 5,
+      "currentOraclePasses": 3
+    },
+    {
+      "taskId": "singleflight",
+      "sourceRunId": "2026-08-18T11-55-32-529Z",
+      "poolSha256": "8f86d26a9485f2ec536336398543b569f5fcf5d61f06836390d0fdc0588d9c6b",
+      "candidatePatchSetSha256": "3520d5cc914c3cb15c6edf1419c4ad1a92afe2bed35fd76a6e245f04e1fde8ce",
+      "generator": "google-antigravity/gemini-2.5-flash-lite",
+      "thinking": "minimal",
+      "visibleTests": true,
+      "candidates": 5,
+      "currentOraclePasses": 1
+    },
+    {
+      "taskId": "stable-stringify",
+      "sourceRunId": "2026-08-18T11-55-32-529Z",
+      "poolSha256": "bb9461709ec6d3fdfe126fbd25359e6709204d36a4d28fb47f1e16712648277e",
+      "candidatePatchSetSha256": "f2a19bf36b784f1353336b045afb34f9ac234ab3835ef050cfd6c9fe2d3cf8fc",
+      "generator": "google-antigravity/gemini-2.5-flash-lite",
+      "thinking": "minimal",
+      "visibleTests": true,
+      "candidates": 5,
+      "currentOraclePasses": 1
+    },
+    {
+      "taskId": "stream-chunker",
+      "sourceRunId": "2026-08-18T11-55-32-529Z",
+      "poolSha256": "a50e2915900c14654591d6e1a1170ad1ae6c9c492fa2437a35f742539ff23400",
+      "candidatePatchSetSha256": "4b9dd0bc394663900552c87ca34d919d83b9ab6fe4c30f89dea8b7b1c7237109",
+      "generator": "google-antigravity/gemini-2.5-flash-lite",
+      "thinking": "minimal",
+      "visibleTests": true,
+      "candidates": 5,
+      "currentOraclePasses": 2
+    }
+  ]
+}
