@@ -163,9 +163,9 @@ Two verifier backends are available:
   every unordered candidate pair. Candidate orientation and call order are seeded, up to
   four comparisons run concurrently, and pairwise-majority wins determine the ranking.
   A candidate's weakest head-to-head probability breaks majority cycles, followed by
-  expected win probability. Semantic contract violations are decisive; validation quality
-  is only a tie-breaker. `--evaluations` repeats the complete round robin. Results are cached
-  after every call.
+  expected win probability. Semantic contract violations are decisive, and each claimed bug
+  must cite an exact supporting code path; validation quality is only a tie-breaker.
+  `--evaluations` repeats the complete round robin. Results are cached after every call.
 
 Both backends use the same three criteria:
 

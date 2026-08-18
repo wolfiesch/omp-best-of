@@ -58,6 +58,8 @@ describe("sampled verifier prompt", () => {
 		);
 		expect(prompt).toContain("A concrete semantic bug or requirement violation outweighs");
 		expect(prompt).toContain("validation quality only as a tie-breaker");
+		expect(prompt).toContain("try to falsify every claimed bug");
+		expect(prompt).toContain("exact supporting code construct");
 		expect(prompt).toContain("probability of passing unseen contract tests");
 	});
 });
