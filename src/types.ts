@@ -1,0 +1,75 @@
+export interface BestOfOptions {
+	cwd: string;
+	task: string;
+	n: number;
+	generatorModel: string;
+	verifierModel: string;
+	nEvaluations: number;
+	pivots: number;
+	maxTime: string;
+	apply: boolean;
+	seed: number;
+	criteria: Record<string, string>;
+	onProgress?: (progress: BestOfProgress) => void;
+}
+
+export type BestOfPhase = "preparing" | "generating" | "verifying" | "applying" | "cleaning";
+
+export interface BestOfProgress {
+	phase: BestOfPhase;
+	completedCandidates: number;
+	totalCandidates: number;
+	message: string;
+}
+
+export interface UsageSummary {
+	requests: number;
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadTokens: number;
+	cacheWriteTokens: number;
+	reasoningTokens: number;
+	costUsd: number;
+}
+
+export interface CandidateResult {
+	index: number;
+	worktree: string;
+	exitCode: number;
+	durationMs: number;
+	transcript: string;
+	finalResponse: string;
+	patch: string;
+	stderr: string;
+	usage: UsageSummary;
+	artifactDir: string;
+}
+
+export interface VerifierUsage {
+	calls: number;
+	input_tokens: number;
+	cached_input_tokens: number;
+	uncached_input_tokens: number;
+	output_tokens: number;
+	reasoning_tokens: number;
+	cache_hit_rate: number;
+}
+
+export interface VerifierResult {
+	index: number;
+	scores: number[];
+	ranking: number[];
+	nComparisons: number;
+	criteria: string[];
+	usage: VerifierUsage;
+}
+
+export interface BestOfResult {
+	runId: string;
+	artifactDir: string;
+	winner: CandidateResult;
+	candidates: CandidateResult[];
+	verifier: VerifierResult | null;
+	applied: boolean;
+	durationMs: number;
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "omp-best-of",
+  "owner": {
+    "name": "OMP Best Of contributors"
+  },
+  "metadata": {
+    "description": "Best-of-N coding-agent selection for Oh My Pi",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "best-of",
+      "description": "Run isolated coding agents and select the strongest patch with LLM-as-a-Verifier",
+      "source": ".",
+      "category": "development"
+    }
+  ]
+}
