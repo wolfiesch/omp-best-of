@@ -6,6 +6,7 @@ import {
 	captureDeltaPatch,
 	cleanupIsolation,
 	ensureIsolation,
+	parseIsolationMode,
 	type IsolationHandle,
 	type WorktreeBaseline,
 } from "@oh-my-pi/pi-coding-agent/task/worktree";
@@ -47,6 +48,17 @@ async function assertCleanRepo(cwd: string): Promise<{ root: string; head: strin
 	}
 	const head = (await requireCommand(["git", "rev-parse", "HEAD"], root)).trim();
 	return { root, head };
+}
+
+async function createCandidateIsolation(root: string, id: string): Promise<IsolationHandle> {
+	const isolation = await ensureIsolation(root, id);
+	try {
+		await requireCommand(["git", "status", "--porcelain=v1", "--untracked-files=all"], isolation.mergedDir);
+		return isolation;
+	} catch {
+		await cleanupIsolation(isolation);
+		return ensureIsolation(root, id, parseIsolationMode("rcopy"));
+	}
 }
 
 async function runCandidate(
@@ -197,7 +209,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 
 	try {
 		for (let index = 0; index < options.n; index += 1) {
-			isolations.push(await ensureIsolation(root, `${id}-candidate-${index + 1}`));
+			isolations.push(await createCandidateIsolation(root, `${id}-candidate-${index + 1}`));
 		}
 		await assertParentUnchanged(
 			root,
