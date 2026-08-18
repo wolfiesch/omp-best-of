@@ -1,7 +1,26 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@oh-my-pi/pi-coding-agent";
 import { DEFAULT_CRITERIA, HELP, parseArgs, tokenize } from "./args";
+import { modelSourceFromRegistry } from "./model";
 import { runBestOf } from "./runner";
 import type { BestOfProgress, BestOfResult } from "./types";
+
+/**
+ * The session's current model as an omp selector. Empty when no model is
+ * resolved yet, which leaves each candidate on omp's own default.
+ */
+function sessionModelSelector(ctx: ExtensionCommandContext): string {
+	const model = ctx.model;
+	return model ? `${model.provider}/${model.id}` : "";
+}
+
+/**
+ * The session's thinking level as an `omp --thinking` value. `inherit` is not a
+ * concrete level, so it is passed through as empty and resolved by the child.
+ */
+function sessionThinkingLevel(pi: ExtensionAPI): string {
+	const level = pi.getThinkingLevel();
+	return !level || level === "inherit" ? "" : level;
+}
 
 function resultLines(result: BestOfResult): string[] {
 	const candidateCost = result.candidates.reduce((sum, candidate) => sum + candidate.usage.costUsd, 0);
@@ -44,7 +63,14 @@ export default function ompBestOfExtension(pi: ExtensionAPI): void {
 				const result = await runBestOf({
 					cwd: ctx.cwd,
 					...parsed,
+					// Candidates inherit the session's live model and thinking level unless
+					// the invocation named its own, so /best-of runs what the caller is running.
+					generatorModel: parsed.generatorModel || sessionModelSelector(ctx),
+					thinking: parsed.thinking || sessionThinkingLevel(pi),
 					criteria: DEFAULT_CRITERIA,
+					// The verifier credential comes from this session's registry, so an
+					// OAuth provider works without a plugin-specific API key.
+					modelSource: modelSourceFromRegistry(ctx.modelRegistry),
 					onProgress: update,
 				});
 				const lines = resultLines(result);

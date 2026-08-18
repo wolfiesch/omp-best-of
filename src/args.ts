@@ -25,12 +25,12 @@ Usage:
 
 Options:
   --n <2-8>                 Number of isolated candidates (default: 3)
-  --model <provider/model>  Candidate model (default: nous/deepseek/deepseek-v4-flash-0731)
-  --verifier-model <model>  llm-verifier model (default: deepseek-v4-flash)
+  --model <provider/model>  Candidate model (default: the calling session's model)
+  --verifier-model <model>  Verifier model from omp's catalog (default: deepseek/deepseek-v4-flash)
   --evaluations <n>         Repeated evaluations per criterion (default: 1)
   --pivots <n>              Probabilistic tournament pivots (default: 2)
   --max-time <duration>     Per-candidate limit, such as 20m (default: 20m)
-  --thinking <level>        Candidate thinking level, such as off or high (default: model default)
+  --thinking <level>        Candidate thinking level (default: the calling session's level)
   --seed <n>                Tournament seed (default: 0)
   --apply                   Apply the selected patch to the clean parent checkout
   --select-only             Rank and retain artifacts without applying (default)
@@ -83,8 +83,8 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 	const options: BestOfCliOptions = {
 		task: "",
 		n: 3,
-		generatorModel: "nous/deepseek/deepseek-v4-flash-0731",
-		verifierModel: "deepseek-v4-flash",
+		generatorModel: "",
+		verifierModel: "deepseek/deepseek-v4-flash",
 		nEvaluations: 1,
 		pivots: 2,
 		maxTime: "20m",
@@ -118,6 +118,7 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 				break;
 			case "--model":
 				options.generatorModel = args[++index] ?? "";
+				if (!options.generatorModel) throw new Error("--model requires a value");
 				break;
 			case "--verifier-model":
 				options.verifierModel = args[++index] ?? "";
@@ -144,7 +145,6 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 	}
 	options.task = task.join(" ").trim();
 	if (!options.task) throw new Error(`A task is required.\n\n${HELP}`);
-	if (!options.generatorModel) throw new Error("--model requires a value");
 	if (!options.verifierModel) throw new Error("--verifier-model requires a value");
 	if (!options.maxTime) throw new Error("--max-time requires a value");
 	return options;

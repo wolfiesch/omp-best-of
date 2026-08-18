@@ -62,4 +62,4 @@ body:
       options:
         - label: The working tree was clean when the run started
         - label: "`omp plugin doctor omp-best-of` reports no errors"
-        - label: The verifier credential is available through `omp token deepseek` or `DEEPSEEK_API_KEY`
+        - label: "`omp token <provider>` returns a credential for the verifier model used"

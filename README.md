@@ -52,10 +52,20 @@ A candidate that exits non-zero, or whose patch cannot be captured, is excluded 
 | Bun 1.3 or newer | Runtime for the plugin and its CLI |
 | Git | Worktree isolation and patch application |
 | `uv` | Runs the pinned `llm-verifier==0.2.0` sidecar |
-| DeepSeek credentials | From `omp token deepseek` or `DEEPSEEK_API_KEY` |
+| A verifier credential in omp | Any provider omp can authenticate that serves an OpenAI-compatible chat-completions endpoint, such as `omp token deepseek` |
 | Clean working tree | Enforced before any candidate starts |
 
-The default candidate model is Oh My Pi's `nous/deepseek/deepseek-v4-flash-0731` entry. The verifier uses the upstream `deepseek-v4-flash` model name against DeepSeek's hosted API. Both are configurable and independent.
+Candidates inherit the calling session's model and thinking level, so `/best-of` runs
+what you are already running; `--model` and `--thinking` override that. The verifier is
+separate and defaults to `deepseek/deepseek-v4-flash`.
+
+Verifier credentials come from omp's own model registry, not from a plugin-specific API
+key, so an OAuth-backed provider works with no extra setup. The selector is resolved the
+way omp's auth gateway resolves it: a provider-qualified id wins outright, and a bare id
+such as `deepseek-v4-flash`, which eight catalog providers serve, picks the first provider
+omp holds a credential for. Resolution happens before the first candidate starts, so a
+missing credential or a model whose dialect cannot return token logprobs fails before any
+generation is paid for.
 
 ## Install
 
@@ -108,12 +118,12 @@ The standalone form writes progress to stderr and a JSON summary to stdout, so `
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--n <2-8>` | `3` | Number of isolated candidates |
-| `--model <provider/model>` | `nous/deepseek/deepseek-v4-flash-0731` | Candidate model |
-| `--verifier-model <model>` | `deepseek-v4-flash` | Verifier model passed to `llm-verifier` |
+| `--model <provider/model>` | session model | Candidate model; every model slot in the child agent is pinned to it |
+| `--verifier-model <model>` | `deepseek/deepseek-v4-flash` | Verifier model, resolved through omp's catalog and credentials |
 | `--evaluations <n>` | `1` | Repeated verifier evaluations per criterion |
 | `--pivots <n>` | `2` | Pivots in the probabilistic tournament |
 | `--max-time <duration>` | `20m` | Per-candidate wall-clock limit, such as `90s`, `20m`, `2h` |
-| `--thinking <level>` | model default | Candidate thinking level, such as `off`, `low`, `high`; trades candidate quality for cost |
+| `--thinking <level>` | session level | Candidate thinking level, such as `off`, `low`, `high`; trades candidate quality for cost |
 | `--seed <n>` | `0` | Tournament seed |
 | `--apply` | off | Apply the winning patch to the parent checkout |
 | `--select-only` | on | Rank and keep artifacts without touching the checkout |
@@ -123,7 +133,6 @@ The standalone form writes progress to stderr and a JSON summary to stdout, so `
 
 | Variable | Purpose |
 | --- | --- |
-| `DEEPSEEK_API_KEY` | Verifier credential. Falls back to `omp token deepseek --raw` |
 | `OMP_BEST_OF_PYTHON` | Run the bridge with an existing interpreter instead of `uv`. That interpreter must already provide `llm-verifier` |
 | `OMP_BEST_OF_VERIFIER_BRIDGE` | Override the bridge script path |
 | `OMP_BEST_OF_OMP_BIN` | Override the `omp` binary used for candidates |
@@ -210,7 +219,8 @@ Losing candidates are kept, so a rejected patch can still be inspected, replayed
 ```bash
 bun install
 bun run check          # type check plus tests
-bun run smoke:verifier # live verifier round trip, needs credentials and network
+bun run smoke:verifier # live verifier round trip through omp credentials, needs network
+bun run smoke:verifier <provider/model> # same, against another verifier you have credentials for
 bun bench/run.ts --help # selection benchmark, spends money on model calls
 ```
 
@@ -221,7 +231,8 @@ Layout:
 ```text
 src/extension.ts   Oh My Pi command registration, progress widget, result reporting
 src/runner.ts      worktrees, candidate execution, ranking, patch application
-src/verifier.ts    credential handoff and JSON contract with the Python bridge
+src/model.ts       verifier endpoint and credential resolution through omp's registry
+src/verifier.ts    JSON contract with the Python bridge
 src/transcript.ts  JSON event stream parsing and usage aggregation
 src/args.ts        flags, defaults, criteria, help text
 src/cli.ts         standalone entry point

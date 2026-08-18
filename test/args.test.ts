@@ -2,17 +2,25 @@ import { describe, expect, test } from "bun:test";
 import { parseArgs, tokenize } from "../src/args";
 
 describe("command arguments", () => {
-	test("uses safe practical defaults", () => {
+	test("inherits model and thinking, and provider-qualifies the verifier", () => {
 		const parsed = parseArgs(["fix", "the", "bug"]);
 		expect(parsed).toMatchObject({
 			task: "fix the bug",
 			n: 3,
-			generatorModel: "nous/deepseek/deepseek-v4-flash-0731",
-			verifierModel: "deepseek-v4-flash",
+			// Empty means the caller's model, resolved by whoever knows the session.
+			generatorModel: "",
+			thinking: "",
+			// Provider-qualified: eight providers ship this model id.
+			verifierModel: "deepseek/deepseek-v4-flash",
 			nEvaluations: 1,
 			pivots: 2,
 			apply: false,
 		});
+	});
+
+	test("an explicit model overrides inheritance", () => {
+		expect(parseArgs(tokenize("--model openai/gpt-5.5 --thinking high task")).generatorModel).toBe("openai/gpt-5.5");
+		expect(() => parseArgs(["--model"])).toThrow("--model requires a value");
 	});
 
 	test("parses options and a quoted task", () => {

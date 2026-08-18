@@ -1,7 +1,10 @@
+import type { ModelSource } from "./model";
+
 export interface BestOfOptions {
 	cwd: string;
 	task: string;
 	n: number;
+	/** Candidate model selector; empty inherits the caller's default model. */
 	generatorModel: string;
 	verifierModel: string;
 	nEvaluations: number;
@@ -13,6 +16,8 @@ export interface BestOfOptions {
 	seed: number;
 	criteria: Record<string, string>;
 	onProgress?: (progress: BestOfProgress) => void;
+	/** Registry the verifier credential is resolved through; omitted builds one on demand. */
+	modelSource?: ModelSource;
 }
 
 export type BestOfPhase = "preparing" | "generating" | "verifying" | "applying" | "cleaning";

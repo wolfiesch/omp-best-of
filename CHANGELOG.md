@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Verifier credentials now resolve through omp's model registry instead of a plugin-local `DEEPSEEK_API_KEY`, so any OAuth-backed provider omp can authenticate works with no extra setup. The endpoint and credential are resolved before the first candidate starts, and a bare model id picks the first provider omp holds a credential for, matching how omp's auth gateway resolves selectors.
+- Candidates inherit the calling session's model and thinking level; `--model` and `--thinking` override them. Previously every run pinned `nous/deepseek/deepseek-v4-flash-0731` regardless of the session.
+- The default `--verifier-model` is provider-qualified as `deepseek/deepseek-v4-flash`, since eight catalog providers serve that bare model id.
+
+### Added
+
+- A model whose dialect cannot return token logprobs is rejected by name before generation, rather than failing mid-run inside the Python bridge.
+
 ## [0.1.0] - 2026-08-18
 
 Initial release.

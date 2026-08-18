@@ -17,6 +17,8 @@ import { mkdir, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DEFAULT_CRITERIA } from "../src/args";
+import type { ModelSource, VerifierEndpoint } from "../src/model";
+import { createModelSource, resolveVerifierEndpoint } from "../src/model";
 import { requireCommand, runCommand } from "../src/process";
 import { composeVerifierTrajectory, runBestOf } from "../src/runner";
 import type { UsageSummary, VerifierResult } from "../src/types";
@@ -92,6 +94,7 @@ interface TaskOutcome {
 	candidates: number;
 	eligible: number;
 	passedCandidates: number;
+	emptyPatchCandidates: number;
 	randomPass1: number;
 	oraclePass: boolean;
 	verifierIndex: number | null;
@@ -115,7 +118,7 @@ function parseArgs(argv: string[]): BenchOptions {
 		tasks: [],
 		n: 4,
 		generatorModel: "nous/deepseek/deepseek-v4-flash-0731",
-		verifierModel: "deepseek-v4-flash",
+		verifierModel: "deepseek/deepseek-v4-flash",
 		nEvaluations: 1,
 		pivots: 2,
 		maxTime: "5m",
@@ -186,6 +189,7 @@ async function rankPool(
 	pool: TaskPool,
 	options: BenchOptions,
 	cachePath: string,
+	endpoint: VerifierEndpoint,
 ): Promise<{ verifier: VerifierResult | null; eligible: PoolCandidate[] }> {
 	const eligible = pool.candidates.filter(candidate => candidate.exitCode === 0);
 	if (eligible.length < 2) return { verifier: null, eligible };
@@ -193,7 +197,7 @@ async function rankPool(
 		problem: pool.prompt,
 		candidates: eligible.map(composeVerifierTrajectory),
 		criteria: DEFAULT_CRITERIA,
-		model: options.verifierModel,
+		endpoint,
 		nEvaluations: options.nEvaluations,
 		pivots: Math.min(options.pivots, eligible.length),
 		seed: options.seed,
@@ -210,6 +214,8 @@ function summarize(pool: TaskPool, eligible: PoolCandidate[], verifier: Verifier
 		candidates: pool.candidates.length,
 		eligible: eligible.length,
 		passedCandidates,
+		// A pool of no-ops is degenerate: every number below is about the agent quitting, not about selection.
+		emptyPatchCandidates: pool.candidates.filter(candidate => candidate.patch.trim() === "").length,
 		randomPass1: pool.candidates.length === 0 ? 0 : passedCandidates / pool.candidates.length,
 		oraclePass: passedCandidates > 0,
 		verifierIndex: selected ? selected.index : null,
@@ -317,6 +323,7 @@ function markdown(scorecard: Record<string, unknown>, outcomes: TaskOutcome[], s
 	const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
 	const usd = (value: number) => `$${value.toFixed(4)}`;
 	const reuse = env.mode.startsWith("reuse");
+	const unpricedGeneration = !reuse && summary.cost.candidateRuns > 0 && summary.cost.generationUsd === 0;
 	const lines = [
 		`# Selection benchmark ${scorecard.runId}`,
 		"",
@@ -347,12 +354,25 @@ function markdown(scorecard: Record<string, unknown>, outcomes: TaskOutcome[], s
 			].join(" | "),
 		).map(row => `| ${row} |`),
 		"",
+		...(outcomes.some(outcome => outcome.emptyPatchCandidates > 0)
+			? [
+					`No-op candidates (agent produced no patch): ${outcomes
+						.filter(outcome => outcome.emptyPatchCandidates > 0)
+						.map(outcome => `${outcome.taskId} ${outcome.emptyPatchCandidates}/${outcome.candidates}`)
+						.join(", ")}. A pool of no-ops measures the generator route failing, not selection.`,
+					"",
+				]
+			: []),
 		reuse
 			? `Generation ${usd(summary.cost.generationUsd)} over ${summary.cost.candidateRuns} candidate runs was carried from the stored pool and not spent again.`
-			: `Generation ${usd(summary.cost.generationUsd)} over ${summary.cost.candidateRuns} candidate runs (${usd(summary.cost.perCandidateUsd)} each, reported by the agent runtime).`,
+			: unpricedGeneration
+				? `Generation over ${summary.cost.candidateRuns} candidate runs is unpriced: the ${env.generatorModel} route reported no per-token cost, so real generation spend is missing from this scorecard rather than zero.`
+				: `Generation ${usd(summary.cost.generationUsd)} over ${summary.cost.candidateRuns} candidate runs (${usd(summary.cost.perCandidateUsd)} each, reported by the agent runtime).`,
 		reuse
 			? `Verification ${usd(summary.cost.verifierCostUsd)} is the only cost this run spent, computed from provider list prices rather than an invoice.`
-			: `Verification ${usd(summary.cost.verifierCostUsd)}, ${pct(summary.cost.verifierShareOfTotal)} of ${usd(summary.cost.totalUsd)} total, computed from provider list prices rather than an invoice.`,
+			: unpricedGeneration
+				? `Verification ${usd(summary.cost.verifierCostUsd)}, computed from provider list prices rather than an invoice. No share of total is reported because generation is unpriced.`
+				: `Verification ${usd(summary.cost.verifierCostUsd)}, ${pct(summary.cost.verifierShareOfTotal)} of ${usd(summary.cost.totalUsd)} total, computed from provider list prices rather than an invoice.`,
 		reuse
 			? `Mean re-ranking wall clock ${(summary.latency.taskWallClockMsMean / 1000).toFixed(1)}s per task, slowest ${(summary.latency.taskWallClockMsMax / 1000).toFixed(1)}s. Generation latency is not re-measured.`
 			: `Mean task wall clock ${(summary.latency.taskWallClockMsMean / 1000).toFixed(1)}s, slowest ${(summary.latency.taskWallClockMsMax / 1000).toFixed(1)}s. Candidates run concurrently within a task; tasks run sequentially.`,
@@ -363,7 +383,12 @@ function markdown(scorecard: Record<string, unknown>, outcomes: TaskOutcome[], s
 	return lines.join("\n");
 }
 
-async function generate(taskId: string, options: BenchOptions, runDir: string): Promise<{ pool: TaskPool; wallClockMs: number; verifier: VerifierResult | null; eligible: PoolCandidate[] }> {
+async function generate(
+	taskId: string,
+	options: BenchOptions,
+	runDir: string,
+	modelSource: ModelSource,
+): Promise<{ pool: TaskPool; wallClockMs: number; verifier: VerifierResult | null; eligible: PoolCandidate[] }> {
 	const taskDir = path.join(TASKS_ROOT, taskId);
 	const prompt = (await Bun.file(path.join(taskDir, "task.md")).text()).trim();
 	const repoDir = await prepareTaskRepo(taskDir, options.visibleTests);
@@ -382,6 +407,7 @@ async function generate(taskId: string, options: BenchOptions, runDir: string): 
 			apply: false,
 			seed: options.seed,
 			criteria: DEFAULT_CRITERIA,
+			modelSource,
 			onProgress: progress =>
 				process.stderr.write(`\r${taskId} ${progress.phase.padEnd(10)} ${progress.completedCandidates}/${progress.totalCandidates} ${progress.message.padEnd(56)}`),
 		});
@@ -451,26 +477,34 @@ async function main(): Promise<void> {
 	const runDir = path.join(RESULTS_ROOT, runId);
 	await mkdir(runDir, { recursive: true });
 
+	// One registry for the whole run: the verifier endpoint and every candidate's
+	// credential resolve through omp once instead of per task.
+	const modelSource = await createModelSource();
 	const outcomes: TaskOutcome[] = [];
 	let generation: TaskPool["generatedBy"][] = [];
-	if (options.reuse) {
-		const pools = await loadPools(options.reuse, options.tasks);
-		generation = pools.map(pool => pool.generatedBy);
-		for (const pool of pools) {
-			const started = Date.now();
-			const { verifier, eligible } = await rankPool(pool, options, path.join(runDir, `verifier-cache-${pool.taskId}.json`));
-			outcomes.push(summarize(pool, eligible, verifier, Date.now() - started));
-			await mkdir(path.join(runDir, "pool"), { recursive: true });
-			await Bun.write(path.join(runDir, "pool", `${pool.taskId}.json`), `${JSON.stringify(pool, null, 2)}\n`);
-			process.stderr.write(`${pool.taskId} re-ranked from ${options.reuse}\n`);
+	try {
+		const endpoint = await resolveVerifierEndpoint(options.verifierModel, modelSource);
+		if (options.reuse) {
+			const pools = await loadPools(options.reuse, options.tasks);
+			generation = pools.map(pool => pool.generatedBy);
+			for (const pool of pools) {
+				const started = Date.now();
+				const { verifier, eligible } = await rankPool(pool, options, path.join(runDir, `verifier-cache-${pool.taskId}.json`), endpoint);
+				outcomes.push(summarize(pool, eligible, verifier, Date.now() - started));
+				await mkdir(path.join(runDir, "pool"), { recursive: true });
+				await Bun.write(path.join(runDir, "pool", `${pool.taskId}.json`), `${JSON.stringify(pool, null, 2)}\n`);
+				process.stderr.write(`${pool.taskId} re-ranked from ${options.reuse}\n`);
+			}
+		} else {
+			const taskIds = options.tasks.length > 0 ? options.tasks : (await readdir(TASKS_ROOT, { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+			for (const taskId of taskIds) {
+				const { pool, wallClockMs, verifier, eligible } = await generate(taskId, options, runDir, modelSource);
+				generation.push(pool.generatedBy);
+				outcomes.push(summarize(pool, eligible, verifier, wallClockMs));
+			}
 		}
-	} else {
-		const taskIds = options.tasks.length > 0 ? options.tasks : (await readdir(TASKS_ROOT, { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
-		for (const taskId of taskIds) {
-			const { pool, wallClockMs, verifier, eligible } = await generate(taskId, options, runDir);
-			generation.push(pool.generatedBy);
-			outcomes.push(summarize(pool, eligible, verifier, wallClockMs));
-		}
+	} finally {
+		modelSource.close?.();
 	}
 
 	const summary = aggregate(outcomes);

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseJsonTranscript } from "./transcript";
+import { resolveVerifierEndpoint } from "./model";
 import { requireCommand, runCommand } from "./process";
 import type { BestOfOptions, BestOfProgress, BestOfResult, CandidateResult } from "./types";
 import { verifyCandidates } from "./verifier";
@@ -58,18 +59,27 @@ async function runCandidate(
 	const started = Date.now();
 	const omp = process.env.OMP_BEST_OF_OMP_BIN ?? "omp";
 	const prompt = `${DEFAULT_AGENT_PROMPT}${options.task}`;
+	// Every model slot pins to one selector so a candidate cannot silently
+	// escalate mid-run. An empty selector leaves the child on its own default,
+	// which is how the session's current model is inherited: the caller resolves
+	// it and passes it explicitly.
+	const modelFlags = options.generatorModel
+		? [
+				"--model",
+				options.generatorModel,
+				"--smol",
+				options.generatorModel,
+				"--slow",
+				options.generatorModel,
+				"--plan",
+				options.generatorModel,
+			]
+		: [];
 	const command = [
 		omp,
 		"--cwd",
 		worktree,
-		"--model",
-		options.generatorModel,
-		"--smol",
-		options.generatorModel,
-		"--slow",
-		options.generatorModel,
-		"--plan",
-		options.generatorModel,
+		...modelFlags,
 		"--mode",
 		"json",
 		"--no-extensions",
@@ -154,6 +164,10 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 	await mkdir(artifacts, { recursive: true });
 	emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Checking repository" });
 	const { root, head } = await assertCleanRepo(options.cwd);
+	// Resolve the verifier's endpoint and credential before generation starts, so
+	// a misconfigured verifier fails before any candidate spends money.
+	emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Resolving verifier endpoint" });
+	const endpoint = await resolveVerifierEndpoint(options.verifierModel, options.modelSource);
 	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-"));
 	const worktrees = Array.from({ length: options.n }, (_, index) => path.join(temporaryRoot, `candidate-${index + 1}`));
 
@@ -185,7 +199,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 				problem: options.task,
 				candidates: eligible.map(composeVerifierTrajectory),
 				criteria: options.criteria,
-				model: options.verifierModel,
+				endpoint,
 				nEvaluations: options.nEvaluations,
 				pivots: Math.min(options.pivots, eligible.length),
 				seed: options.seed,
