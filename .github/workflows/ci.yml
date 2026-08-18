@@ -56,3 +56,13 @@ jobs:
       - name: Packed CLI smoke test
         if: matrix.bun-version == '1.3.14'
         run: bun run smoke:package
+
+  required:
+    name: Type check and tests
+    needs: check
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Confirm Bun matrix passed
+        run: test "${{ needs.check.result }}" = "success"
