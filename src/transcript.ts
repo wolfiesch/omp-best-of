@@ -13,6 +13,7 @@ const EMPTY_USAGE: UsageSummary = {
 interface ParsedTranscript {
 	transcript: string;
 	finalResponse: string;
+	recordedToolEvidence: string;
 	usage: UsageSummary;
 }
 
@@ -42,6 +43,7 @@ export function parseJsonTranscript(stdout: string): ParsedTranscript {
 	const sections: string[] = [];
 	let finalResponse = "";
 	const usage = { ...EMPTY_USAGE };
+	const recordedToolEvidence: string[] = [];
 
 	for (const line of stdout.split("\n")) {
 		if (!line.trim()) continue;
@@ -55,6 +57,17 @@ export function parseJsonTranscript(stdout: string): ParsedTranscript {
 		const message = event.message as Record<string, unknown>;
 		const role = typeof message.role === "string" ? message.role : String(message.type ?? "message");
 		const text = contentText(message.content);
+		if (role === "assistant" && Array.isArray(message.content)) {
+			for (const part of message.content) {
+				if (!part || typeof part !== "object") continue;
+				const value = part as Record<string, unknown>;
+				if (value.type === "toolCall") {
+					recordedToolEvidence.push(`[tool ${String(value.name ?? "unknown")}] ${JSON.stringify(value.arguments)}`);
+				}
+			}
+		} else if (role === "toolResult" && text) {
+			recordedToolEvidence.push(`## toolResult\n${text}`);
+		}
 		if (text) sections.push(`## ${role}\n${text}`);
 		if (role === "assistant" && text) finalResponse = text;
 
@@ -70,5 +83,5 @@ export function parseJsonTranscript(stdout: string): ParsedTranscript {
 		}
 	}
 
-	return { transcript: sections.join("\n\n"), finalResponse, usage };
+	return { transcript: sections.join("\n\n"), finalResponse, recordedToolEvidence: recordedToolEvidence.join("\n\n"), usage };
 }

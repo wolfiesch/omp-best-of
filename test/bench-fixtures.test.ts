@@ -1,7 +1,7 @@
 import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "bun:test";
-import { prepareTaskRepo, scoreCandidate } from "../bench/oracle";
+import { prepareTaskRepo, scoreCandidate, visibleTestFiles } from "../bench/oracle";
 import { requireCommand } from "../src/process";
 
 const TASKS_ROOT = path.resolve(import.meta.dir, "../bench/tasks");
@@ -22,12 +22,30 @@ async function patchFor(taskDir: string, edits: { file: string; content: string 
 	}
 }
 
-test("every task ships a prompt, visible tests, an oracle, and a reference solution", () => {
+test("every task ships a prompt, visible tests, an oracle, and a reference solution", async () => {
 	expect(taskIds.length).toBeGreaterThan(0);
+	for (const taskId of taskIds) {
+		const taskDir = path.join(TASKS_ROOT, taskId);
+		expect((await Bun.file(path.join(taskDir, "task.md")).text()).trim().length).toBeGreaterThan(0);
+		expect((await visibleTestFiles(taskDir)).length).toBeGreaterThan(0);
+		expect((await readdir(path.join(taskDir, "oracle"))).some(file => file.endsWith(".test.js"))).toBe(true);
+		expect((await readdir(path.join(taskDir, "reference"))).some(file => file.endsWith(".js"))).toBe(true);
+	}
 });
 
 for (const taskId of taskIds) {
 	const taskDir = path.join(TASKS_ROOT, taskId);
+
+	test(`${taskId}: the shipped visible tests pass`, async () => {
+		const repoDir = await prepareTaskRepo(taskDir);
+		try {
+			const visible = await visibleTestFiles(taskDir);
+			expect(visible.length).toBeGreaterThan(0);
+			await requireCommand(["bun", "test", ...visible], repoDir);
+		} finally {
+			await rm(repoDir, { recursive: true, force: true });
+		}
+	});
 
 	test(`${taskId}: the shipped bug fails the oracle`, async () => {
 		const repoDir = await prepareTaskRepo(taskDir);

@@ -127,6 +127,7 @@ async function runCandidate(
 		exitCode: patchError ? 1 : processResult.exitCode,
 		durationMs: Date.now() - started,
 		transcript: parsed.transcript,
+		recordedToolEvidence: parsed.recordedToolEvidence,
 		finalResponse: parsed.finalResponse,
 		patch,
 		stderr: `${processResult.stderr}${patchError ? `\n${patchError}` : ""}`.trim(),
@@ -149,11 +150,37 @@ export function composeVerifierTrajectory(candidate: Pick<CandidateResult, "tran
 		.join("\n\n");
 }
 
-/** Keeps sampled judgments focused on the implementation instead of candidate-authored validation narration. */
-export function composeSampledVerifierEvidence(candidate: Pick<CandidateResult, "patch" | "exitCode" | "stderr">): string {
+/** Extracts recorded tool invocations/results from legacy rendered transcripts. */
+export function extractRecordedToolEvidence(transcript: string, maxChars = 12_000): string {
+	const sections = transcript.split(/(?=^## )/m);
+	const evidence: string[] = [];
+	for (const section of sections) {
+		if (section.startsWith("## toolResult\n")) {
+			evidence.push(section.trim());
+			continue;
+		}
+		if (!section.startsWith("## assistant\n")) continue;
+		evidence.push(...section.match(/^\[tool [^\n]+$/gm) ?? []);
+	}
+	const joined = evidence.join("\n\n");
+	return joined.length <= maxChars ? joined : `[earlier tool evidence omitted]\n${joined.slice(-maxChars)}`;
+}
+
+/** Keeps sampled judgments focused on code and recorded execution instead of assistant narration. */
+export function composeSampledVerifierEvidence(candidate: {
+	transcript: string;
+	recordedToolEvidence?: string;
+	patch: string;
+	exitCode: number;
+	stderr: string;
+}): string {
+	const recorded = candidate.recordedToolEvidence ?? extractRecordedToolEvidence(candidate.transcript);
+	const toolEvidence = recorded.length <= 12_000 ? recorded : `[earlier tool evidence omitted]\n${recorded.slice(-12_000)}`;
 	return [
 		"## Final repository patch",
 		candidate.patch || "(no repository changes)",
+		"## Recorded tool evidence",
+		toolEvidence || "(none)",
 		"## Process result",
 		`exit_code=${candidate.exitCode}`,
 		candidate.stderr ? `stderr:\n${candidate.stderr}` : "stderr: (empty)",
@@ -259,6 +286,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 						...common,
 						candidates: eligible.map(composeSampledVerifierEvidence),
 						model: options.verifierModel,
+						thinking: options.verifierThinking,
 						preflightUsage: sampledPreflightUsage,
 						cwd: root,
 					})

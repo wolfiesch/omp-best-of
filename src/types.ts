@@ -10,6 +10,8 @@ export interface BestOfOptions {
 	generatorModel: string;
 	verifierModel: string;
 	verifierBackend: VerifierBackend;
+	/** Sampled-verifier thinking level; empty uses the verifier's low-cost default. */
+	verifierThinking: string;
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
@@ -50,6 +52,7 @@ export interface CandidateResult {
 	exitCode: number;
 	durationMs: number;
 	transcript: string;
+	recordedToolEvidence: string;
 	finalResponse: string;
 	patch: string;
 	stderr: string;

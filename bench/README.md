@@ -29,7 +29,8 @@ bun bench/run.ts --n 4 --generate-only               # store pools without verif
 bun bench/run.ts --reuse <run-id> --evaluations 4    # re-rank with the logprob backend
 bun bench/run.ts --reuse <run-id> \
   --verifier-backend sampled \
-  --verifier-model openai-codex/gpt-5.6-luna         # subscription-backed pairwise judge
+  --verifier-model openai-codex/gpt-5.6-luna \
+  --verifier-thinking high                            # stronger subscription-backed judge
 ```
 
 Generation cost comes from the agent runtime's usage accounting. Logprob verifier cost is
@@ -56,6 +57,11 @@ Two guards keep a labeling failure from turning into a fake result:
 `tasks/<id>/reference` is never copied into a candidate worktree. It exists so the oracle is
 provably satisfiable.
 
+Every oracle case should map to an explicit sentence in `task.md`, including rejection,
+mutation, identity, ordering, concurrency, and malformed-input semantics. `--reuse`
+automatically rescores every stored patch against the current oracle before ranking, so
+generation-time `passed` labels cannot survive an oracle correction unnoticed.
+
 ## Difficulty controls
 
 A pool only carries information when candidates disagree. Two flags reduce the candidate's
@@ -72,8 +78,8 @@ advantage without touching the labels:
 Every run writes `scorecard.json` with source hash and dirty flag, `omp` version and binary
 hash, Bun version, platform, generator model, thinking level, whether the fixture shipped
 visible tests, verifier model and backend, evaluations, pivots, seed, per-candidate time
-limit, oracle timeout, iteration count, the applicable price or sampled-judge settings, and
-the raw pool paths. `summary.md` is the human-readable form of the same run.
+limit, oracle timeout, label provenance, iteration count, the applicable price or sampled
+judge settings, and the raw pool paths. `summary.md` is the human-readable form of the same run.
 
 ## Adding a task
 
@@ -85,4 +91,5 @@ tasks/<id>/
   reference/<module>.js       reference solution, harness only
 ```
 
-Then run `bun test test/bench-fixtures.test.ts`, which enforces the two properties above.
+Then run `bun test test/bench-fixtures.test.ts`, which proves that the shipped visible tests
+pass, the shipped defect fails the hidden oracle, and the reference solution passes it.

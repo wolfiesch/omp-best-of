@@ -58,6 +58,8 @@ A candidate that exits non-zero, or whose patch cannot be captured, is excluded 
 Candidates inherit the calling session's model and thinking level, so `/best-of` runs
 what you are already running; `--model` and `--thinking` override that. Verification is
 separate and defaults to the `logprob` backend with `deepseek/deepseek-v4-flash`.
+Sampled verification defaults to low reasoning; `--verifier-thinking` changes the judge
+without changing candidate generation.
 
 The default logprob backend resolves credentials through omp's model registry. DeepSeek V4
 Flash is the default because its native score-tag path is known to work. Other endpoints
@@ -163,9 +165,10 @@ Two verifier backends are available:
   every unordered candidate pair. Candidate orientation and call order are seeded, up to
   four comparisons run concurrently, and pairwise-majority wins determine the ranking.
   A candidate's weakest head-to-head probability breaks majority cycles, followed by
-  expected win probability. Semantic contract violations are decisive, and each claimed bug
-  must cite an exact supporting code path; validation quality is only a tie-breaker.
-  `--evaluations` repeats the complete round robin. Results are cached after every call.
+  expected win probability. Semantic contract violations are decisive. Each claimed bug
+  must cite an exact code path and produce a concrete contract-valid counterexample;
+  validation quality is only a tie-breaker. `--evaluations` repeats the complete round
+  robin. Results are cached after every call.
 
 Both backends use the same three criteria:
 
@@ -177,11 +180,10 @@ Both backends use the same three criteria:
 
 In logprob mode, ranking uses the upstream probabilistic pivot tournament rather than all
 pairs. A cyclic ring pass gives every candidate one comparison, then leaders become pivots.
-Sampled mode deliberately uses all pairs, requiring $N(N-1)/2$ calls per evaluation.
-
 The logprob verifier receives each rendered trajectory, final patch, and process result.
-Sampled judgments receive the patch and process result but omit the agent-authored transcript,
-which prevents validation narration from outweighing implementation semantics.
+Sampled judgments receive the patch, recorded tool calls/results, and process result while
+excluding assistant reasoning and final claims. This preserves concrete failed checks
+without letting candidate-authored validation narration outweigh implementation semantics.
 
 ## Cost and latency model
 

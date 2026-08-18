@@ -6,6 +6,7 @@ export interface BestOfCliOptions {
 	generatorModel: string;
 	verifierModel: string;
 	verifierBackend: VerifierBackend;
+	verifierThinking: string;
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
@@ -32,6 +33,7 @@ Options:
   --model <provider/model>  Candidate model (default: the calling session's model)
   --verifier-model <model>  Verifier model selector (default: deepseek/deepseek-v4-flash)
   --verifier-backend <mode> logprob or sampled (default: logprob)
+  --verifier-thinking <level> Sampled-verifier thinking level (default: low)
   --evaluations <n>         Logprob repetitions or sampled pairwise rounds (default: 1)
   --pivots <n>              Probabilistic pivots for the logprob backend (default: 2)
   --max-time <duration>     Per-candidate limit, such as 20m (default: 20m)
@@ -92,6 +94,7 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 		generatorModel: "",
 		verifierModel: "deepseek/deepseek-v4-flash",
 		verifierBackend: "logprob",
+		verifierThinking: "low",
 		nEvaluations: 1,
 		pivots: 2,
 		maxTime: "20m",
@@ -140,6 +143,10 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 				options.verifierBackend = backend;
 				break;
 			}
+			case "--verifier-thinking":
+				options.verifierThinking = args[++index] ?? "";
+				if (!options.verifierThinking) throw new Error("--verifier-thinking requires a value");
+				break;
 			case "--evaluations":
 				options.nEvaluations = integer(args[++index], arg);
 				break;
