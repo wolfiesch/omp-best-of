@@ -32,7 +32,7 @@ describe("JSON event transcript", () => {
 				},
 			},
 		]
-			.map(event => JSON.stringify(event))
+			.map((event) => JSON.stringify(event))
 			.join("\n");
 		const parsed = parseJsonTranscript(events);
 		expect(parsed.transcript).toContain("## user\nFix it");

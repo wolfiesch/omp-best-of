@@ -3,3 +3,5 @@ node_modules/
 .DS_Store
 *.tgz
 bench/results/
+__pycache__/
+*.pyc

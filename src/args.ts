@@ -82,9 +82,27 @@ export function tokenize(input: string): string[] {
 	return tokens;
 }
 
-function integer(value: string | undefined, flag: string): number {
-	if (value === undefined || !/^\d+$/.test(value)) throw new Error(`${flag} requires an integer`);
-	return Number(value);
+function requiredValue(args: string[], index: number, flag: string): string {
+	const value = args[index + 1];
+	if (value === undefined || value.startsWith("--")) throw new Error(`${flag} requires a value`);
+	return value;
+}
+
+function integer(value: string, flag: string): number {
+	if (!/^\d+$/.test(value)) throw new Error(`${flag} requires an integer`);
+	const parsed = Number(value);
+	if (!Number.isSafeInteger(parsed)) throw new Error(`${flag} requires a safe integer`);
+	return parsed;
+}
+
+export function parseDurationMs(value: string): number {
+	const match = /^(\d+)(s|m|h)?$/.exec(value.trim());
+	if (!match) throw new Error(`Invalid max time: ${value}`);
+	const amount = Number(match[1]);
+	const multiplier = match[2] === "h" ? 3_600_000 : match[2] === "m" ? 60_000 : 1_000;
+	const duration = amount * multiplier;
+	if (!Number.isSafeInteger(duration)) throw new Error(`Invalid max time: ${value}`);
+	return duration;
 }
 
 export function parseArgs(args: string[]): BestOfCliOptions {
@@ -128,40 +146,48 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 				options.verify = false;
 				break;
 			case "--n":
-				options.n = integer(args[++index], arg);
+				options.n = integer(requiredValue(args, index, arg), arg);
+				index += 1;
 				break;
 			case "--model":
-				options.generatorModel = args[++index] ?? "";
-				if (!options.generatorModel) throw new Error("--model requires a value");
+				options.generatorModel = requiredValue(args, index, arg);
+				index += 1;
 				break;
 			case "--verifier-model":
-				options.verifierModel = args[++index] ?? "";
+				options.verifierModel = requiredValue(args, index, arg);
+				index += 1;
 				break;
 			case "--verifier-backend": {
-				const backend = args[++index];
+				const backend = requiredValue(args, index, arg);
 				if (backend !== "logprob" && backend !== "sampled") throw new Error("--verifier-backend must be logprob or sampled");
 				options.verifierBackend = backend;
+				index += 1;
 				break;
 			}
 			case "--verifier-thinking":
-				options.verifierThinking = args[++index] ?? "";
-				if (!options.verifierThinking) throw new Error("--verifier-thinking requires a value");
+				options.verifierThinking = requiredValue(args, index, arg);
+				index += 1;
 				break;
 			case "--evaluations":
-				options.nEvaluations = integer(args[++index], arg);
+				options.nEvaluations = integer(requiredValue(args, index, arg), arg);
+				index += 1;
 				break;
 			case "--pivots":
-				options.pivots = integer(args[++index], arg);
+				options.pivots = integer(requiredValue(args, index, arg), arg);
+				index += 1;
 				break;
 			case "--max-time":
-				options.maxTime = args[++index] ?? "";
+				options.maxTime = requiredValue(args, index, arg);
+				parseDurationMs(options.maxTime);
+				index += 1;
 				break;
 			case "--thinking":
-				options.thinking = args[++index] ?? "";
-				if (!options.thinking) throw new Error("--thinking requires a value");
+				options.thinking = requiredValue(args, index, arg);
+				index += 1;
 				break;
 			case "--seed":
-				options.seed = integer(args[++index], arg);
+				options.seed = integer(requiredValue(args, index, arg), arg);
+				index += 1;
 				break;
 			default:
 				throw new Error(`Unknown option: ${arg}`);

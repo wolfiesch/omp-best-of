@@ -34,20 +34,31 @@ describe("command arguments", () => {
 	});
 
 	test("selects the subscription-backed sampled verifier", () => {
-		const parsed = parseArgs([
-			"--verifier-backend",
-			"sampled",
-			"--verifier-model",
-			"openai-codex/gpt-5.6-luna",
-			"task",
-		]);
+		const parsed = parseArgs(["--verifier-backend", "sampled", "--verifier-model", "provider/test-model", "task"]);
 		expect(parsed.verifierBackend).toBe("sampled");
-		expect(parsed.verifierModel).toBe("openai-codex/gpt-5.6-luna");
+		expect(parsed.verifierModel).toBe("provider/test-model");
 		expect(parseArgs(["--verifier-backend", "sampled", "--verifier-thinking", "high", "task"]).verifierThinking).toBe("high");
 		expect(() => parseArgs(["--verifier-backend", "unknown", "task"])).toThrow("--verifier-backend must be logprob or sampled");
 	});
 
 	test("rejects unknown options", () => {
 		expect(() => parseArgs(["--mystery", "task"])).toThrow("Unknown option");
+	});
+
+	test("treats --help after the delimiter as task text", () => {
+		expect(parseArgs(["--", "explain", "--help"]).task).toBe("explain --help");
+	});
+
+	test("rejects another flag where an option value is required", () => {
+		expect(() => parseArgs(["--model", "--apply", "task"])).toThrow("--model requires a value");
+		expect(() => parseArgs(["--max-time", "--apply", "task"])).toThrow("--max-time requires a value");
+	});
+
+	test("rejects unsafe integer options", () => {
+		expect(() => parseArgs(["--evaluations", "999999999999999999999999999999", "task"])).toThrow("--evaluations requires a safe integer");
+	});
+
+	test("rejects invalid durations during argument parsing", () => {
+		expect(() => parseArgs(["--max-time", "nonsense", "task"])).toThrow("Invalid max time: nonsense");
 	});
 });

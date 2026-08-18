@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
+import { composeSampledVerifierEvidence, extractRecordedToolEvidence } from "../src/runner";
 import {
 	aggregatePairwiseJudgments,
 	buildCandidateAuditPrompt,
@@ -14,7 +15,6 @@ import {
 	parsePairwiseJudgment,
 	sampledVerifierUsage,
 } from "../src/sampled-verifier";
-import { composeSampledVerifierEvidence, extractRecordedToolEvidence } from "../src/runner";
 
 describe("sampled verifier pair schedule", () => {
 	test("covers every unordered pair once per evaluation", () => {
@@ -22,8 +22,8 @@ describe("sampled verifier pair schedule", () => {
 		expect(schedule).toHaveLength(12);
 		for (let evaluation = 0; evaluation < 2; evaluation += 1) {
 			const pairs = schedule
-				.filter(pair => pair.evaluation === evaluation)
-				.map(pair => [Math.min(pair.a, pair.b), Math.max(pair.a, pair.b)].join("-"))
+				.filter((pair) => pair.evaluation === evaluation)
+				.map((pair) => [Math.min(pair.a, pair.b), Math.max(pair.a, pair.b)].join("-"))
 				.sort();
 			expect(pairs).toEqual(["0-1", "0-2", "0-3", "1-2", "1-3", "2-3"]);
 		}

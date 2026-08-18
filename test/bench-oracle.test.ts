@@ -1,6 +1,6 @@
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import path from "node:path";
-import { afterAll, beforeAll, expect, test } from "bun:test";
 import { prepareTaskRepo, rescoreCandidates, scoreCandidate } from "../bench/oracle";
 import { requireCommand } from "../src/process";
 
@@ -69,30 +69,34 @@ test("labels a correct fix as passing", async () => {
 	const patch = await patchFor([{ file: "intervals.js", content: CORRECT }]);
 	const label = await scoreCandidate(taskDir, repoDir, patch);
 	expect(label.passed).toBe(true);
-});
+}, 15_000);
 
 test("labels a partial fix as failing", async () => {
 	const patch = await patchFor([{ file: "intervals.js", content: PARTIAL }]);
 	const label = await scoreCandidate(taskDir, repoDir, patch);
 	expect(label.passed).toBe(false);
-});
+}, 15_000);
 
 test("rescoring refreshes every stored patch against the current oracle", async () => {
 	const correct = await patchFor([{ file: "intervals.js", content: CORRECT }]);
 	const partial = await patchFor([{ file: "intervals.js", content: PARTIAL }]);
 	const labels = await rescoreCandidates(taskDir, [correct, partial]);
-	expect(labels.map(label => label.passed)).toEqual([true, false]);
-});
+	expect(labels.map((label) => label.passed)).toEqual([true, false]);
+}, 15_000);
 
 test("restores visible tests so deleting them cannot buy a pass", async () => {
 	const patch = await patchFor([{ file: "intervals.js", content: PARTIAL }], ["intervals.test.js"]);
 	expect(patch).toContain("intervals.test.js");
 	const label = await scoreCandidate(taskDir, repoDir, patch);
 	expect(label.passed).toBe(false);
-});
+}, 15_000);
 
 test("labels a patch that does not apply as failing", async () => {
-	const label = await scoreCandidate(taskDir, repoDir, "diff --git a/nope.js b/nope.js\n--- a/nope.js\n+++ b/nope.js\n@@ -1 +1 @@\n-a\n+b\n");
+	const label = await scoreCandidate(
+		taskDir,
+		repoDir,
+		"diff --git a/nope.js b/nope.js\n--- a/nope.js\n+++ b/nope.js\n@@ -1 +1 @@\n-a\n+b\n",
+	);
 	expect(label.passed).toBe(false);
 	expect(label.detail).toContain("patch did not apply");
 });

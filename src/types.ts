@@ -25,6 +25,8 @@ export interface BestOfOptions {
 	onProgress?: (progress: BestOfProgress) => void;
 	/** Registry the verifier credential is resolved through; omitted builds one on demand. */
 	modelSource?: ModelSource;
+	/** Cancels candidate and verifier subprocesses when the caller stops the run. */
+	signal?: AbortSignal;
 }
 
 export type BestOfPhase = "preparing" | "generating" | "verifying" | "applying" | "cleaning";
@@ -48,8 +50,10 @@ export interface UsageSummary {
 
 export interface CandidateResult {
 	index: number;
-	worktree: string;
+	workspace: string;
 	exitCode: number;
+	timedOut: boolean;
+	aborted: boolean;
 	durationMs: number;
 	transcript: string;
 	recordedToolEvidence: string;
@@ -81,12 +85,42 @@ export interface VerifierResult {
 	usage: VerifierUsage;
 }
 
+export interface SelectionResult {
+	performed: boolean;
+	winnerIndex: number | null;
+}
+
+export interface ApplicationResult {
+	requested: boolean;
+	applied: boolean;
+}
+
 export interface BestOfResult {
 	runId: string;
 	artifactDir: string;
-	winner: CandidateResult;
+	selection: SelectionResult;
+	application: ApplicationResult;
 	candidates: CandidateResult[];
 	verifier: VerifierResult | null;
-	applied: boolean;
+	durationMs: number;
+}
+
+export interface CandidateSummary {
+	index: number;
+	exitCode: number;
+	timedOut: boolean;
+	aborted: boolean;
+	durationMs: number;
+	artifactDir: string;
+	usage: UsageSummary;
+}
+
+export interface BestOfManifest {
+	schemaVersion: 1;
+	runId: string;
+	selection: SelectionResult;
+	candidateSummaries: CandidateSummary[];
+	verifier: VerifierResult | null;
+	application: ApplicationResult;
 	durationMs: number;
 }

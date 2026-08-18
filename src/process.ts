@@ -2,18 +2,49 @@ export interface CommandResult {
 	exitCode: number;
 	stdout: string;
 	stderr: string;
+	timedOut: boolean;
+	aborted: boolean;
 }
 
-export async function runCommand(
-	command: string[],
-	options: { cwd?: string; env?: Record<string, string | undefined>; stdin?: string; timeoutMs?: number } = {},
-): Promise<CommandResult> {
+export interface CommandOptions {
+	cwd?: string;
+	env?: Record<string, string | undefined>;
+	stdin?: string;
+	timeoutMs?: number;
+	terminationGraceMs?: number;
+	signal?: AbortSignal;
+}
+
+interface KillableProcess {
+	pid: number;
+	kill(signal?: number | NodeJS.Signals): void;
+}
+
+function signalProcessTree(proc: KillableProcess, signal: NodeJS.Signals): void {
+	if (process.platform !== "win32") {
+		try {
+			process.kill(-proc.pid, signal);
+			return;
+		} catch {
+			// The process may have exited between the check and the signal.
+		}
+	}
+	try {
+		proc.kill(signal);
+	} catch {
+		// Exit won the race.
+	}
+}
+
+export async function runCommand(command: string[], options: CommandOptions = {}): Promise<CommandResult> {
+	options.signal?.throwIfAborted();
 	const proc = Bun.spawn(command, {
 		cwd: options.cwd,
 		env: { ...process.env, ...options.env },
 		stdin: options.stdin === undefined ? "ignore" : "pipe",
 		stdout: "pipe",
 		stderr: "pipe",
+		detached: process.platform !== "win32" && (options.timeoutMs !== undefined || options.signal !== undefined),
 	});
 
 	if (options.stdin !== undefined) {
@@ -23,20 +54,42 @@ export async function runCommand(
 		stdin.end();
 	}
 
-	let timer: NodeJS.Timeout | undefined;
+	let timedOut = false;
+	let aborted = false;
+	let timeoutTimer: NodeJS.Timeout | undefined;
+	let terminating = false;
+	let termination: Promise<void> | undefined;
+	const terminate = (): void => {
+		if (terminating) return;
+		terminating = true;
+		signalProcessTree(proc, "SIGTERM");
+		const { promise, resolve } = Promise.withResolvers<void>();
+		termination = promise;
+		setTimeout(() => {
+			signalProcessTree(proc, "SIGKILL");
+			resolve();
+		}, options.terminationGraceMs ?? 2_000);
+	};
+	const onAbort = (): void => {
+		aborted = true;
+		terminate();
+	};
+	options.signal?.addEventListener("abort", onAbort, { once: true });
+	if (options.signal?.aborted) onAbort();
 	if (options.timeoutMs !== undefined) {
-		timer = setTimeout(() => proc.kill("SIGTERM"), options.timeoutMs);
+		timeoutTimer = setTimeout(() => {
+			timedOut = true;
+			terminate();
+		}, options.timeoutMs);
 	}
 
 	try {
-		const [exitCode, stdout, stderr] = await Promise.all([
-			proc.exited,
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-		]);
-		return { exitCode, stdout, stderr };
+		const [exitCode, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+		await termination;
+		return { exitCode, stdout, stderr, timedOut, aborted };
 	} finally {
-		clearTimeout(timer);
+		clearTimeout(timeoutTimer);
+		options.signal?.removeEventListener("abort", onAbort);
 	}
 }
 

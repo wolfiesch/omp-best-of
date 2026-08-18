@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import path from "node:path";
-import { parseJsonTranscript } from "./transcript";
+import { writePrivateFile } from "./artifacts";
 import { runCommand } from "./process";
+import { parseJsonTranscript } from "./transcript";
 import type { UsageSummary, VerifierResult, VerifierUsage } from "./types";
 
 export interface SampledVerifierInput {
@@ -18,6 +18,7 @@ export interface SampledVerifierInput {
 	audits?: CandidateAudit[];
 	candidateCwds?: Array<string | null>;
 	ompBin?: string;
+	signal?: AbortSignal;
 }
 
 export interface PairComparison {
@@ -109,7 +110,12 @@ export function parsePairwiseJudgment(text: string): PairwiseJudgment {
 	}
 	if (!parsed || typeof parsed !== "object") throw new Error("Sampled verifier judgment must be an object");
 	const value = parsed as Record<string, unknown>;
-	if (typeof value.probabilityA !== "number" || !Number.isFinite(value.probabilityA) || value.probabilityA < 0 || value.probabilityA > 100) {
+	if (
+		typeof value.probabilityA !== "number" ||
+		!Number.isFinite(value.probabilityA) ||
+		value.probabilityA < 0 ||
+		value.probabilityA > 100
+	) {
 		throw new Error("Sampled verifier probabilityA must be a finite number from 0 to 100");
 	}
 	return { probabilityA: value.probabilityA, reason: typeof value.reason === "string" ? value.reason : "" };
@@ -242,9 +248,12 @@ async function invokeJudge(
 			"-p",
 			prompt,
 		],
-		{ cwd, timeoutMs: SAMPLED_VERIFIER_SETTINGS.timeoutMs },
+		{ cwd, timeoutMs: SAMPLED_VERIFIER_SETTINGS.timeoutMs, signal: input.signal },
 	);
-	if (result.exitCode !== 0) throw new Error(`Sampled verifier failed (${result.exitCode}): ${result.stderr.trim() || result.stdout.slice(0, 500)}`);
+	if (result.timedOut) throw new Error("Sampled verifier timed out");
+	if (result.aborted) throw input.signal?.reason ?? new DOMException("Sampled verifier aborted", "AbortError");
+	if (result.exitCode !== 0)
+		throw new Error(`Sampled verifier failed (${result.exitCode}): ${result.stderr.trim() || result.stdout.slice(0, 500)}`);
 	const parsed = parseJsonTranscript(result.stdout);
 	if (!parsed.finalResponse) throw new Error(`Sampled verifier returned no final response: ${result.stderr.slice(0, 500)}`);
 	return { response: parsed.finalResponse, usage: parsed.usage, recordedToolEvidence: parsed.recordedToolEvidence };
@@ -401,7 +410,7 @@ export function aggregatePairwiseJudgments(
 		pairTotals[comparison.a][comparison.b] += shareA;
 		pairTotals[comparison.b][comparison.a] += 1 - shareA;
 	}
-	const expectedScores = expectedTotals.map(total => total / (nEvaluations * (candidateCount - 1)));
+	const expectedScores = expectedTotals.map((total) => total / (nEvaluations * (candidateCount - 1)));
 	const majorityWins = pairTotals.map((row, candidate) =>
 		row.reduce((wins, total, opponent) => {
 			if (candidate === opponent) return wins;
@@ -410,9 +419,9 @@ export function aggregatePairwiseJudgments(
 		}, 0),
 	);
 	const minimumPairScores = pairTotals.map((row, candidate) =>
-		Math.min(...row.filter((_, opponent) => candidate !== opponent).map(total => total / nEvaluations)),
+		Math.min(...row.filter((_, opponent) => candidate !== opponent).map((total) => total / nEvaluations)),
 	);
-	const scores = majorityWins.map(wins => wins / (candidateCount - 1));
+	const scores = majorityWins.map((wins) => wins / (candidateCount - 1));
 	const ranking = scores
 		.map((_, index) => index)
 		.sort(
@@ -433,7 +442,7 @@ export function sampledVerifierUsage(usages: UsageSummary[]): VerifierUsage {
 	return total;
 }
 
-export async function assertSampledVerifierSupported(model: string, cwd?: string): Promise<UsageSummary> {
+export async function assertSampledVerifierSupported(model: string, cwd?: string, signal?: AbortSignal): Promise<UsageSummary> {
 	const result = await judgePair(
 		{
 			problem: "Return the arithmetic sum.",
@@ -444,6 +453,7 @@ export async function assertSampledVerifierSupported(model: string, cwd?: string
 			seed: 0,
 			cachePath: "",
 			cwd,
+			signal,
 		},
 		{ evaluation: 0, a: 0, b: 1 },
 	);
@@ -456,11 +466,14 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 	const usage = sampledVerifierUsage(input.preflightUsage ? [input.preflightUsage] : []);
 	let save = Promise.resolve();
 	const persist = async () => {
-		save = save.then(async () => {
-			await Bun.write(input.cachePath, `${JSON.stringify(cache, null, 2)}\n`);
-		});
+		save = save.then(() => writePrivateFile(input.cachePath, `${JSON.stringify(cache, null, 2)}\n`));
 		await save;
 	};
+	const controller = new AbortController();
+	const abortWorkers = (): void => controller.abort(input.signal?.reason);
+	input.signal?.addEventListener("abort", abortWorkers, { once: true });
+	if (input.signal?.aborted) abortWorkers();
+	const workerInput = { ...input, signal: controller.signal };
 
 	let firstError: unknown;
 	for (let round = 0; round < CANDIDATE_AUDIT_ROUNDS; round += 1) {
@@ -479,12 +492,13 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 						(_, priorRound) => cache.audits[auditCacheKey(priorRound, index)],
 					);
 					if (priorAudits.some(audit => !audit)) throw new Error("Sampled verifier prior audit cache is incomplete");
-					const audit = await auditCandidate(input, index, priorAudits);
+					const audit = await auditCandidate(workerInput, index, priorAudits);
 					cache.audits[auditCacheKey(round, index)] = { index, round, ...audit };
 					addUsage(usage, audit.usage);
 					await persist();
 				} catch (error) {
-					firstError = error;
+					firstError ??= error;
+					controller.abort(error);
 				}
 			}
 		};
@@ -492,7 +506,11 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 			Array.from({ length: Math.min(SAMPLED_VERIFIER_SETTINGS.maxWorkers, missingAudits.length) }, auditWorker),
 		);
 		await save;
-		if (firstError !== undefined) throw firstError;
+		input.signal?.throwIfAborted();
+		if (firstError !== undefined) {
+			input.signal?.removeEventListener("abort", abortWorkers);
+			throw firstError;
+		}
 	}
 	const audits = input.candidates.map((_, index) =>
 		combineCandidateAudits(
@@ -503,7 +521,7 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 		),
 	);
 
-	const auditedInput = { ...input, audits };
+	const auditedInput = { ...workerInput, audits };
 	const missing = schedule.filter(pair => !cache.comparisons[cacheKey(pair)]);
 	let next = 0;
 	firstError = undefined;
@@ -518,14 +536,17 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 				addUsage(usage, judgment.usage);
 				await persist();
 			} catch (error) {
-				firstError = error;
+				firstError ??= error;
+				controller.abort(error);
 			}
 		}
 	};
 	await Promise.all(Array.from({ length: Math.min(SAMPLED_VERIFIER_SETTINGS.maxWorkers, missing.length) }, worker));
+	input.signal?.removeEventListener("abort", abortWorkers);
 	await save;
+	input.signal?.throwIfAborted();
 	if (firstError !== undefined) throw firstError;
-	const completed = schedule.map(pair => cache.comparisons[cacheKey(pair)]);
+	const completed = schedule.map((pair) => cache.comparisons[cacheKey(pair)]);
 	for (const comparison of completed) {
 		if (!comparison) throw new Error("Sampled verifier cache is incomplete");
 	}

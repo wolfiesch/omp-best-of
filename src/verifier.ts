@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { VerifierEndpoint } from "./model";
 import { runCommand } from "./process";
+import { isRecord } from "./type-guards";
 import type { VerifierResult } from "./types";
 
 export interface VerifyCandidatesInput {
@@ -13,10 +14,18 @@ export interface VerifyCandidatesInput {
 	pivots: number;
 	seed: number;
 	cachePath: string;
+	signal?: AbortSignal;
+	timeoutMs?: number;
 }
 
 /** One bridge invocation: same interpreter, same credential handoff, different mode. */
-async function runBridge(endpoint: VerifierEndpoint, payload: unknown, args: string[] = []): Promise<string> {
+async function runBridge(
+	endpoint: VerifierEndpoint,
+	payload: unknown,
+	args: string[] = [],
+	signal?: AbortSignal,
+	timeoutMs?: number,
+): Promise<string> {
 	const bridgePath = process.env.OMP_BEST_OF_VERIFIER_BRIDGE ?? path.resolve(import.meta.dir, "../python/verify.py");
 	const command = process.env.OMP_BEST_OF_PYTHON
 		? [process.env.OMP_BEST_OF_PYTHON, bridgePath, ...args]
@@ -26,7 +35,11 @@ async function runBridge(endpoint: VerifierEndpoint, payload: unknown, args: str
 		// `llm_verifier.create_client()` prefers OPENAI_BASE_URL, so this selects the
 		// OpenAI-compatible path with the credential omp minted for that provider.
 		env: { OPENAI_BASE_URL: endpoint.baseUrl, OPENAI_API_KEY: endpoint.apiKey },
+		signal,
+		timeoutMs,
 	});
+	if (result.timedOut) throw new Error("Verifier timed out");
+	if (result.aborted) throw signal?.reason ?? new DOMException("Verifier aborted", "AbortError");
 	if (result.exitCode !== 0) {
 		throw new Error(`Verifier failed (${result.exitCode}): ${result.stderr.trim() || result.stdout.trim()}`);
 	}
@@ -38,9 +51,19 @@ async function runBridge(endpoint: VerifierEndpoint, payload: unknown, args: str
  * generated. Skipped for an endpoint on upstream's native score-tag path, which
  * needs no grammar support; one token of output otherwise.
  */
-export async function assertScoringSupported(endpoint: VerifierEndpoint): Promise<void> {
-	if (endpoint.nativeScoreTags) return;
-	const stdout = await runBridge(endpoint, { model: endpoint.model }, ["--probe"]);
+export async function assertScoringSupported(endpoint: VerifierEndpoint, signal?: AbortSignal): Promise<void> {
+	if (endpoint.nativeScoreTags) {
+		const stdout = await runBridge(endpoint, { model: endpoint.model }, ["--probe-native"], signal, 60_000);
+		let result: unknown;
+		try {
+			result = JSON.parse(stdout);
+		} catch {
+			throw new Error(`Native verifier probe returned invalid JSON: ${stdout.slice(0, 500)}`);
+		}
+		if (isRecord(result) && result.ok === true) return;
+		throw new Error(`Native verifier probe failed: ${stdout.slice(0, 500)}`);
+	}
+	const stdout = await runBridge(endpoint, { model: endpoint.model }, ["--probe"], signal, 60_000);
 	let sample: ScoringProbeSample;
 	try {
 		sample = JSON.parse(stdout) as ScoringProbeSample;
@@ -54,17 +77,85 @@ export async function assertScoringSupported(endpoint: VerifierEndpoint): Promis
 	);
 }
 
-export async function verifyCandidates(input: VerifyCandidatesInput): Promise<VerifierResult> {
-	if (input.candidates.length < 2) {
-		throw new Error("Verifier requires at least two candidates");
+function finiteNumbers(value: unknown, field: string, length: number): number[] {
+	if (!Array.isArray(value) || value.length !== length || value.some((item) => typeof item !== "number" || !Number.isFinite(item))) {
+		throw new Error(`Verifier contract error: ${field} must contain ${length} finite numbers`);
 	}
-	const { endpoint, ...payload } = input;
-	const stdout = await runBridge(endpoint, { ...payload, model: endpoint.model });
+	return value;
+}
+
+export function validateVerifierResult(value: unknown, candidateCount: number, backend: VerifierResult["backend"]): VerifierResult {
+	if (!isRecord(value)) throw new Error("Verifier contract error: response must be an object");
+	const index = value.index;
+	if (!Number.isSafeInteger(index) || (index as number) < 0 || (index as number) >= candidateCount) {
+		throw new Error(`Verifier contract error: index must identify one of ${candidateCount} candidates`);
+	}
+	const scores = finiteNumbers(value.scores, "scores", candidateCount);
+	const ranking = finiteNumbers(value.ranking, "ranking", candidateCount);
+	if (ranking.some((candidateIndex) => !Number.isSafeInteger(candidateIndex) || candidateIndex < 0 || candidateIndex >= candidateCount)) {
+		throw new Error("Verifier contract error: ranking contains an invalid candidate index");
+	}
+	const seenIndexes = new Set(ranking);
+	if (seenIndexes.size !== candidateCount) {
+		throw new Error("Verifier contract error: ranking must be a complete permutation of candidate indexes");
+	}
+	const nComparisons = value.nComparisons;
+	if (!Number.isSafeInteger(nComparisons) || (nComparisons as number) < 0) {
+		throw new Error("Verifier contract error: nComparisons must be a nonnegative safe integer");
+	}
+	if (!Array.isArray(value.criteria) || value.criteria.some((criterion) => typeof criterion !== "string")) {
+		throw new Error("Verifier contract error: criteria must be an array of strings");
+	}
+	if (!isRecord(value.usage)) throw new Error("Verifier contract error: usage must be an object");
+	const usageFields = [
+		"calls",
+		"input_tokens",
+		"cached_input_tokens",
+		"uncached_input_tokens",
+		"output_tokens",
+		"reasoning_tokens",
+		"cache_hit_rate",
+	] as const;
+	for (const field of usageFields) {
+		const amount = value.usage[field];
+		if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) {
+			throw new Error(`Verifier contract error: usage.${field} must be a nonnegative finite number`);
+		}
+	}
+	const reportedCost = value.usage.reported_cost_usd;
+	if (reportedCost !== undefined && (typeof reportedCost !== "number" || !Number.isFinite(reportedCost) || reportedCost < 0)) {
+		throw new Error("Verifier contract error: usage.reported_cost_usd must be a nonnegative finite number");
+	}
+	return {
+		backend,
+		index: index as number,
+		scores,
+		ranking,
+		nComparisons: nComparisons as number,
+		criteria: value.criteria,
+		usage: {
+			calls: value.usage.calls as number,
+			input_tokens: value.usage.input_tokens as number,
+			cached_input_tokens: value.usage.cached_input_tokens as number,
+			uncached_input_tokens: value.usage.uncached_input_tokens as number,
+			output_tokens: value.usage.output_tokens as number,
+			reasoning_tokens: value.usage.reasoning_tokens as number,
+			cache_hit_rate: value.usage.cache_hit_rate as number,
+			...(reportedCost === undefined ? {} : { reported_cost_usd: reportedCost }),
+		},
+	};
+}
+export async function verifyCandidates(input: VerifyCandidatesInput): Promise<VerifierResult> {
+	if (input.candidates.length < 2) throw new Error("Verifier requires at least two candidates");
+	const { endpoint, signal, timeoutMs, ...payload } = input;
+	const stdout = await runBridge(endpoint, { ...payload, model: endpoint.model }, [], signal, timeoutMs);
+	let parsed: unknown;
 	try {
-		return { ...(JSON.parse(stdout) as Omit<VerifierResult, "backend">), backend: "logprob" };
+		parsed = JSON.parse(stdout);
 	} catch {
 		throw new Error(`Verifier returned invalid JSON: ${stdout.slice(0, 500)}`);
 	}
+	return validateVerifierResult(parsed, input.candidates.length, "logprob");
 }
 
 /** Raw sample returned by the bridge's `--probe` mode. */
@@ -98,7 +189,7 @@ export function evaluateScoringProbe(sample: ScoringProbeSample): ScoringSupport
 			detail: `the endpoint rejected continue_final_message and structured_outputs (${sample.error}). Upstream catches that and scores every pair a flat 0.5.`,
 		};
 	}
-	const allowed = new Set((sample.letters ?? []).map(letter => letter.trim()));
+	const allowed = new Set((sample.letters ?? []).map((letter) => letter.trim()));
 	const alternatives = sample.alternatives ?? [];
 	const emitted = (sample.emitted ?? "").trim();
 	if (!allowed.has(emitted)) {
@@ -113,11 +204,14 @@ export function evaluateScoringProbe(sample: ScoringProbeSample): ScoringSupport
 			detail: `the endpoint returned ${alternatives.length} top-logprob alternatives at the score position, so there is no distribution to take an expectation over.`,
 		};
 	}
-	const disallowed = [...new Set(alternatives.filter(token => !allowed.has(token.trim())))];
+	const disallowed = [...new Set(alternatives.filter((token) => !allowed.has(token.trim())))];
 	if (disallowed.length > 0) {
 		return {
 			supported: false,
-			detail: `${disallowed.length} of ${alternatives.length} alternatives at the score position are outside the score alphabet (${disallowed.slice(0, 6).map(token => JSON.stringify(token)).join(", ")}), so the grammar was not applied and the scores would be arbitrary.`,
+			detail: `${disallowed.length} of ${alternatives.length} alternatives at the score position are outside the score alphabet (${disallowed
+				.slice(0, 6)
+				.map((token) => JSON.stringify(token))
+				.join(", ")}), so the grammar was not applied and the scores would be arbitrary.`,
 		};
 	}
 	return { supported: true, detail: `constrained to ${alternatives.length} score letters` };
