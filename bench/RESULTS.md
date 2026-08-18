@@ -368,3 +368,53 @@ each task used four verifier workers and a two-minute per-call timeout. Candidat
 
 Machine-readable aggregate: `bench/results/expanded-recorded-evidence.json`. Raw scorecards are
 under the nine final run directories and six same-pool comparison directories named there.
+
+## Executable candidate falsification
+
+The sampled verifier now materializes every final candidate repository and runs two independent
+falsification passes through an OS-sandboxed probe tool. Candidate workspaces are read-only,
+credentials and user-home data are unavailable, network access is disabled, and only private
+scratch storage is writable. The first pass must retain one completed probe result and the
+second must retain three while challenging the first pass's conclusions. A noncompliant audit
+is retried twice before the run fails. Pairwise ranking receives the combined audits and probe
+results as untrusted evidence.
+
+On the same fixed `json-patch` pool that previously failed systematically, the final source
+selected the only oracle-passing candidate in two of three seeds:
+
+| Source | Selections | Oracle-labeled selections | Reported verifier cost | Mean task wall clock |
+| --- | ---: | ---: | ---: | ---: |
+| `f9f639a` executable audits without enforced probes | 3 | 2/3 (66.7%) | $0.6362 | 143.1s |
+| `06eefab` sandboxed, enforced executable probes | 3 | **2/3 (66.7%)** | $0.6633 | 175.4s |
+
+The final implementation did not improve selection on this three-selection JSON Patch bank.
+It used 4.3% higher runtime accounting and 22.6% higher mean wall-clock time than the earlier
+source. This comparison includes sandboxing, probe enforcement, audit retries, prompt changes,
+and ranking changes; it is not a single-factor causal ablation.
+
+Across `ring-buffer`, `singleflight`, `stable-stringify`, and `stream-chunker`, the final source
+selected an oracle-passing candidate in 11/12 seed/task selections. Across all five fixed pools
+and three seeds:
+
+| Selections | Random pass@1 | Verifier-selected | Oracle pass@5 | Provider requests | Input tokens | Reported verifier cost | Mean task wall clock |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 15 | 32.0% | **13/15 (86.7%)** | 100.0% | 879 | 41.90M | $3.2620 | 167.4s |
+
+These runs retained 150 pairwise comparisons, 150 candidate audits, and 504 sandboxed probe
+results. Every one of the 75 first-pass audits retained at least one probe result; every one of
+the 75 second-pass audits retained at least three. Tool loops and compliance retries expanded
+the 300 retained audit/comparison records into 879 provider requests. Input comprised 29.88M
+cached and 12.02M uncached tokens; output was 216.2K tokens and reasoning was 98.1K tokens.
+Runtime accounting averaged $0.2175 per task selection. Subscription-routed accounting is not
+a per-token invoice.
+
+All six final runs used clean source `06eefab3726ef82d1100bec92a82a172aeddffc8`,
+OMP binary hash `a547f8fa4457e1f96886a7ece04a27dc110f80c29b395daeb223f4a98e802a24`,
+omp/17.3.4, Bun 1.3.14, and Linux x64 on the Hostinger VPS. Runs were sequential within each
+sweep; the JSON Patch and four-task sweeps overlapped. Each task used four verifier workers and
+a two-minute per-call timeout. External overall timeouts were 12 minutes for each JSON Patch
+run and 35 minutes for each four-task run. Generation was reused and not spent during ranking.
+Cold and warm paths were not separated.
+
+Machine-readable aggregate: `bench/results/candidate-falsification-evidence.json`. Raw
+scorecards are under the six final run directories named in that aggregate.
