@@ -3,7 +3,7 @@
 [![CI](https://github.com/wolfiesch/omp-best-of/actions/workflows/ci.yml/badge.svg)](https://github.com/wolfiesch/omp-best-of/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Run several [Oh My Pi](https://github.com/can1357/oh-my-pi) coding agents on the same task in isolated git worktrees, rank their complete trajectories with [LLM-as-a-Verifier](https://github.com/llm-as-a-verifier/llm-as-a-verifier), and apply only the patch that wins.
+Run several OMP-powered isolated candidate agents on the same task in detached git worktrees, rank their complete trajectories with [LLM-as-a-Verifier](https://github.com/llm-as-a-verifier/llm-as-a-verifier), and optionally apply the selected patch.
 
 ```text
 /best-of --n 5 --apply Fix the failing authentication test
@@ -11,9 +11,9 @@ Run several [Oh My Pi](https://github.com/can1357/oh-my-pi) coding agents on the
 
 ## Why this exists
 
-Sampling several solutions raises the chance that at least one of them is correct. In production you rarely have a hidden test suite to tell you which one it is, so that headroom is normally wasted. A calibrated verifier converts it into a single answer, which is what makes repeated sampling from an inexpensive model competitive with one expensive single-shot run.
+Sampling several solutions raises the chance that at least one is correct, but selecting among them remains a separate problem. This plugin provides OMP orchestration, pluggable verifier selection, inspectable artifacts, and opt-in patch application. Selection quality depends on the candidates, criteria, verifier model, and endpoint.
 
-This repository is the Oh My Pi orchestration layer: isolation, patch safety, artifacts, and cost accounting. The scoring algorithm is the published one from Kwok et al. and runs through the upstream `llm-verifier` Python package rather than a reimplementation.
+The tournament algorithm is from Kwok et al. and runs through the upstream `llm-verifier` Python package rather than a reimplementation. Its published benchmark results belong to the upstream authors; this plugin has not established equivalent reliability.
 
 ## How it works
 
@@ -52,7 +52,7 @@ A candidate that exits non-zero, or whose patch cannot be captured, is excluded 
 | Bun 1.3 or newer | Runtime for the plugin and its CLI |
 | Git | Worktree isolation and patch application |
 | `uv` | Runs the pinned `llm-verifier==0.2.0` sidecar |
-| A verifier credential in omp | Any provider omp can authenticate that serves an OpenAI-compatible chat-completions endpoint, such as `omp token deepseek` |
+| A verifier credential in omp | `omp token <provider>`; DeepSeek V4 Flash is the default and recommended low-cost option |
 | Clean working tree | Enforced before any candidate starts |
 
 Candidates inherit the calling session's model and thinking level, so `/best-of` runs
@@ -60,12 +60,16 @@ what you are already running; `--model` and `--thinking` override that. The veri
 separate and defaults to `deepseek/deepseek-v4-flash`.
 
 Verifier credentials come from omp's own model registry, not from a plugin-specific API
-key, so an OAuth-backed provider works with no extra setup. The selector is resolved the
-way omp's auth gateway resolves it: a provider-qualified id wins outright, and a bare id
-such as `deepseek-v4-flash`, which eight catalog providers serve, picks the first provider
-omp holds a credential for. Resolution happens before the first candidate starts, so a
-missing credential or a model whose dialect cannot return token logprobs fails before any
-generation is paid for.
+key, so a compatible OAuth-backed provider works with no extra setup. Resolution and a
+scoring-capability preflight happen before the first candidate starts, so an incompatible
+verifier does not spend the candidate budget.
+
+Any catalog model and provider may be selected. DeepSeek V4 Flash is the default because
+it is inexpensive and its native score-tag path is known to work. Other endpoints
+must prove the constrained-prefill behavior required by `llm-verifier==0.2.0`; the plugin
+sends a one-token capability probe before generation and refuses endpoints that ignore or
+reject that contract. Compatible self-hosted vLLM and SGLang endpoints are therefore
+eligible rather than hard-coded by provider.
 
 ## Install
 
@@ -119,7 +123,7 @@ The standalone form writes progress to stderr and a JSON summary to stdout, so `
 | --- | --- | --- |
 | `--n <2-8>` | `3` | Number of isolated candidates |
 | `--model <provider/model>` | session model | Candidate model; every model slot in the child agent is pinned to it |
-| `--verifier-model <model>` | `deepseek/deepseek-v4-flash` | Verifier model, resolved through omp's catalog and credentials |
+| `--verifier-model <model>` | `deepseek/deepseek-v4-flash` | Verifier model, resolved through omp's catalog and credentials; non-native endpoints must pass the live scoring probe |
 | `--evaluations <n>` | `1` | Repeated verifier evaluations per criterion |
 | `--pivots <n>` | `2` | Pivots in the probabilistic tournament |
 | `--max-time <duration>` | `20m` | Per-candidate wall-clock limit, such as `90s`, `20m`, `2h` |
@@ -127,6 +131,7 @@ The standalone form writes progress to stderr and a JSON summary to stdout, so `
 | `--seed <n>` | `0` | Tournament seed |
 | `--apply` | off | Apply the winning patch to the parent checkout |
 | `--select-only` | on | Rank and keep artifacts without touching the checkout |
+| `--no-verify` | off | Generate and retain candidate artifacts without ranking; cannot be combined with `--apply` |
 | `--help` | | Print usage |
 
 ### Environment
@@ -206,13 +211,13 @@ Losing candidates are kept, so a rejected patch can still be inspected, replayed
 
 ## Safety model
 
-- Candidates never see the parent checkout. Each one gets a detached worktree at the recorded commit.
+- Each candidate gets a detached worktree at the recorded commit and is instructed not to modify the parent. This prevents repository patch collisions; it is not an OS sandbox or host-isolation boundary.
 - The run refuses to start from a dirty working tree.
 - Selection is the default. Without `--apply`, patches stay in the artifact directory.
 - Before applying, the parent `HEAD` and status must be byte-identical to preflight, otherwise the run reports that the winner was not applied.
 - Applying uses `git apply --check` before the real apply, so a conflicting patch fails without partial writes.
 - Candidate agents do not commit, and the plugin never pushes, tags, or rewrites history.
-- Candidate sessions run in Oh My Pi's `yolo` approval mode inside their disposable worktrees. That is deliberate, and it is the reason isolation is mandatory rather than optional.
+- Candidate agents run as headless OMP subprocesses in `yolo` approval mode with sessions and extensions disabled. They do not appear in Agent Hub or native subagent lifecycle surfaces, and they can technically access the host filesystem and network.
 
 ## Development
 

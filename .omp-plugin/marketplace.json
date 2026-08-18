@@ -5,15 +5,15 @@
 		"name": "Wolfgang Schoenberger"
 	},
 	"metadata": {
-		"description": "Best-of-N coding-agent selection for Oh My Pi",
-		"version": "0.1.0"
+		"description": "OMP-powered isolated candidate agents with pluggable verifier selection",
+		"version": "0.1.1"
 	},
 	"plugins": [
 		{
 			"name": "best-of",
-			"description": "Run isolated coding agents and select the strongest patch with LLM-as-a-Verifier",
+			"description": "Run OMP-powered candidate agents and select a patch with LLM-as-a-Verifier",
 			"source": "./",
-			"version": "0.1.0",
+			"version": "0.1.1",
 			"author": {
 				"name": "Wolfgang Schoenberger"
 			},

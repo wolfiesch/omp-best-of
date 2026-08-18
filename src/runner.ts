@@ -5,7 +5,7 @@ import { parseJsonTranscript } from "./transcript";
 import { resolveVerifierEndpoint } from "./model";
 import { requireCommand, runCommand } from "./process";
 import type { BestOfOptions, BestOfProgress, BestOfResult, CandidateResult } from "./types";
-import { verifyCandidates } from "./verifier";
+import { assertScoringSupported, verifyCandidates } from "./verifier";
 
 const DEFAULT_AGENT_PROMPT = `Work independently on the task below. Modify the repository directly, run focused validation, and finish only when the requested behavior works. Do not commit changes. Preserve unrelated user work.\n\n`;
 
@@ -171,6 +171,8 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 	if (options.verify) {
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Resolving verifier endpoint" });
 		endpoint = await resolveVerifierEndpoint(options.verifierModel, options.modelSource);
+		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Probing verifier scoring capability" });
+		await assertScoringSupported(endpoint);
 	}
 	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-"));
 	const worktrees = Array.from({ length: options.n }, (_, index) => path.join(temporaryRoot, `candidate-${index + 1}`));

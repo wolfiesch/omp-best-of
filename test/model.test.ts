@@ -1,11 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { matchModels, type ModelSource, type RegistryModel, resolveVerifierEndpoint } from "../src/model";
 
-/** The catalog ships `deepseek-v4-flash` under eight providers, so a bare id is ambiguous. */
+/**
+ * The catalog ships `deepseek-v4-flash` under multiple providers. DeepSeek's
+ * endpoint reaches upstream's native score-tag path; other chat-completions
+ * endpoints remain eligible but must prove constrained prefill live.
+ */
 const CATALOG: RegistryModel[] = [
 	{ id: "deepseek-v4-flash", provider: "aimlapi", baseUrl: "https://api.aimlapi.com/v1", api: "openai-completions" },
 	{ id: "deepseek-v4-flash", provider: "deepseek", baseUrl: "https://api.deepseek.com", api: "openai-completions" },
 	{ id: "deepseek-v4-flash", provider: "venice", baseUrl: "https://api.venice.ai/api/v1", api: "openai-completions" },
+	{
+		id: "deepseek-reasoner",
+		wireId: "deepseek-reasoner-0731",
+		provider: "deepseek",
+		baseUrl: "https://api.deepseek.com/v1",
+		api: "openai-completions",
+	},
 	{ id: "claude-opus-4-8", provider: "anthropic", baseUrl: "https://api.anthropic.com", api: "anthropic-messages" },
 	{
 		id: "deepseek/deepseek-v4-flash-0731",
@@ -42,35 +53,52 @@ describe("selector matching", () => {
 });
 
 describe("verifier endpoint resolution", () => {
-	test("skips ambiguous providers omp cannot authenticate", async () => {
-		const endpoint = await resolveVerifierEndpoint("deepseek-v4-flash", source({ deepseek: "sk-real" }));
+	test("prefers a native scoring endpoint for an ambiguous bare id", async () => {
+		const endpoint = await resolveVerifierEndpoint(
+			"deepseek-v4-flash",
+			source({ aimlapi: "sk-aimlapi", deepseek: "sk-real", venice: "sk-venice" }),
+		);
 		expect(endpoint).toEqual({
 			provider: "deepseek",
 			model: "deepseek-v4-flash",
 			baseUrl: "https://api.deepseek.com",
 			apiKey: "sk-real",
+			nativeScoreTags: true,
 		});
 	});
 
 	test("sends the wire id when the catalog renames a model", async () => {
-		const endpoint = await resolveVerifierEndpoint("nous/deepseek/deepseek-v4-flash-0731", source({ nous: "sk-nous" }));
-		expect(endpoint.model).toBe("deepseek-v4-flash-0731");
+		const endpoint = await resolveVerifierEndpoint("deepseek/deepseek-reasoner", source({ deepseek: "sk-real" }));
+		expect(endpoint.model).toBe("deepseek-reasoner-0731");
 	});
 
-	test("substitutes a placeholder key for a keyless provider", async () => {
-		const endpoint = await resolveVerifierEndpoint("venice/deepseek-v4-flash", source({ venice: "N/A" }));
-		expect(endpoint.apiKey).toBe("EMPTY");
-	});
-
-	test("rejects a dialect with no logprob support", async () => {
-		await expect(resolveVerifierEndpoint("anthropic/claude-opus-4-8", source({ anthropic: "sk-ant" }))).rejects.toThrow(
-			"anthropic-messages",
+	test("admits a non-native endpoint for the live capability probe", async () => {
+		const endpoint = await resolveVerifierEndpoint(
+			"nous/deepseek/deepseek-v4-flash-0731",
+			source({ nous: "sk-nous" }),
 		);
+		expect(endpoint).toMatchObject({
+			provider: "nous",
+			model: "deepseek-v4-flash-0731",
+			nativeScoreTags: false,
+		});
 	});
 
-	test("names the providers tried when no credential exists", async () => {
+	test("keeps a provider-qualified compatible endpoint eligible", async () => {
+		const endpoint = await resolveVerifierEndpoint("venice/deepseek-v4-flash", source({ venice: "sk-venice" }));
+		expect(endpoint.provider).toBe("venice");
+		expect(endpoint.nativeScoreTags).toBe(false);
+	});
+
+	test("admits a non-chat catalog dialect for the live capability probe", async () => {
+		const endpoint = await resolveVerifierEndpoint("anthropic/claude-opus-4-8", source({ anthropic: "sk-ant" }));
+		expect(endpoint.provider).toBe("anthropic");
+		expect(endpoint.nativeScoreTags).toBe(false);
+	});
+
+	test("names every compatible provider when no credential exists", async () => {
 		await expect(resolveVerifierEndpoint("deepseek-v4-flash", source({}))).rejects.toThrow(
-			/no credential.*aimlapi, deepseek, venice/s,
+			/no credential.*deepseek, aimlapi, venice/s,
 		);
 	});
 

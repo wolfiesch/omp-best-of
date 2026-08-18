@@ -4,15 +4,23 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-18
+
 ### Changed
 
-- Verifier credentials now resolve through omp's model registry instead of a plugin-local `DEEPSEEK_API_KEY`, so any OAuth-backed provider omp can authenticate works with no extra setup. The endpoint and credential are resolved before the first candidate starts, and a bare model id picks the first provider omp holds a credential for, matching how omp's auth gateway resolves selectors.
-- Candidates inherit the calling session's model and thinking level; `--model` and `--thinking` override them. Previously every run pinned `nous/deepseek/deepseek-v4-flash-0731` regardless of the session.
-- The default `--verifier-model` is provider-qualified as `deepseek/deepseek-v4-flash`, since eight catalog providers serve that bare model id.
+- Verifier credentials now resolve through omp's model registry instead of a plugin-local `DEEPSEEK_API_KEY`, so any compatible provider omp can authenticate works with no extra setup.
+- Candidates inherit the calling session's model and thinking level; `--model` and `--thinking` override them.
+- DeepSeek V4 Flash remains the default verifier because its native score-tag path is known-good and inexpensive, while other chat-completions endpoints are admitted when they prove the required scoring capability.
+- Public documentation now describes the headless OMP subprocess architecture and repository-level worktree isolation without implying native Agent Hub integration, host sandboxing, or established selector reliability.
 
 ### Added
 
-- A model whose dialect cannot return token logprobs is rejected by name before generation, rather than failing mid-run inside the Python bridge.
+- A one-token scoring-capability probe runs before candidate generation for non-native verifier endpoints. It rejects endpoints that cannot provide the constrained score-token distribution required by `llm-verifier`.
+- `--no-verify` and the benchmark's `--generate-only` mode retain candidate pools without paying for a tournament, so stored pools can be ranked later.
+
+### Fixed
+
+- Generate-only benchmark runs no longer report the first candidate as a verifier selection when no tournament ran.
 
 ## [0.1.0] - 2026-08-18
 
@@ -31,4 +39,5 @@ Initial release.
 - Progress widget in the TUI and a stderr progress line for the standalone CLI.
 - Marketplace catalog for `omp plugin marketplace add`.
 
+[0.1.1]: https://github.com/wolfiesch/omp-best-of/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/wolfiesch/omp-best-of/releases/tag/v0.1.0

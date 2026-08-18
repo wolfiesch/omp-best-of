@@ -24,8 +24,9 @@ different verifier settings and pays only for verification, which is what makes 
 affordable.
 
 ```bash
-bun bench/run.ts --n 4 --max-time 4m            # generate pools and rank them
-bun bench/run.ts --reuse <run-id> --evaluations 4 # re-rank the same pools, verifier cost only
+bun bench/run.ts --n 4 --max-time 4m                 # generate pools and rank them
+bun bench/run.ts --n 4 --generate-only               # store pools without verifier cost
+bun bench/run.ts --reuse <run-id> --evaluations 4    # re-rank stored pools, verifier cost only
 ```
 
 Generation cost comes from the agent runtime's own usage accounting. Verifier cost is

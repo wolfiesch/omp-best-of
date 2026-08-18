@@ -31,20 +31,37 @@ export interface VerifierEndpoint {
 	model: string;
 	baseUrl: string;
 	apiKey: string;
+	/**
+	 * Whether upstream will read its own sampled score tags here. False means the
+	 * endpoint has to serve constrained prefill, which is proven live before any
+	 * candidate runs rather than assumed.
+	 */
+	nativeScoreTags: boolean;
 }
 
+
 /**
- * `llm-verifier` reads a score-token distribution from `POST /chat/completions`
- * with `logprobs`, so only chat-completions dialects can serve it. Responses,
- * Anthropic Messages, and Gemini endpoints expose no equivalent field.
+ * Upstream's own dispatch condition, copied verbatim from
+ * `fine_grained_reward.create_openai_client`: a DeepSeek base URL gets the
+ * native score-tag path, and every other endpoint goes through
+ * `_score_tags_by_prefill`. Matched as a substring, not a parsed host, so this
+ * predicts the branch upstream actually takes rather than a stricter rule of
+ * our own.
  */
-const CHAT_COMPLETION_APIS: ReadonlySet<string> = new Set(["openai-completions", "openrouter"]);
+const DEEPSEEK_NATIVE_BASE_URL = "api.deepseek.com";
 
-/** omp's sentinel for a provider that needs no credential. */
-const NO_AUTH = "N/A";
-
-/** OpenAI clients require some key string even against a keyless local server. */
-const KEYLESS_PLACEHOLDER = "EMPTY";
+/**
+ * Whether an endpoint reaches the scoring path this plugin has measured.
+ *
+ * `llm-verifier==0.2.0` reads a real score distribution from DeepSeek's own
+ * sampled tags. Any other base URL is routed through `_score_tags_by_prefill`,
+ * which requires vLLM/SGLang `continue_final_message` and `structured_outputs`.
+ * A server without them returns tag-less data, and `extract_score` then returns
+ * a hard 0.5 with no exception, so `on_error="raise"` never fires.
+ */
+export function servesNativeScoreTags(baseUrl: string): boolean {
+	return baseUrl.includes(DEEPSEEK_NATIVE_BASE_URL);
+}
 
 /**
  * Every catalog entry a selector could mean, best first: the provider-qualified
@@ -65,7 +82,7 @@ export function suggestModels(models: readonly RegistryModel[], selector: string
 	const stem = (selector.trim().toLowerCase().split("/").pop() ?? "").slice(0, 24);
 	if (!stem) return [];
 	return models
-		.filter(model => CHAT_COMPLETION_APIS.has(model.api) && model.id.toLowerCase().includes(stem))
+		.filter(model => model.id.toLowerCase().includes(stem))
 		.slice(0, limit)
 		.map(model => `${model.provider}/${model.id}`);
 }
@@ -103,9 +120,13 @@ export async function createModelSource(): Promise<ModelSource> {
 }
 
 /**
- * Resolve a verifier model selector to a live OpenAI-compatible endpoint plus a
- * credential omp already holds. Runs before any candidate starts, so an
- * unusable verifier fails before money is spent on generation.
+ * Resolve a verifier model selector to a live endpoint plus a credential omp
+ * already holds. Runs before any candidate starts, so the subsequent capability
+ * probe can fail before money is spent on generation.
+ *
+ * DeepSeek's own endpoint is known to support upstream's native score-tag path;
+ * every other model and provider is admitted provisionally and must pass the
+ * live scoring probe.
  */
 export async function resolveVerifierEndpoint(selector: string, source?: ModelSource): Promise<VerifierEndpoint> {
 	const resolved = source ?? (await createModelSource());
@@ -119,15 +140,14 @@ export async function resolveVerifierEndpoint(selector: string, source?: ModelSo
 				: " Run `omp models find <text>` to list candidates.";
 			throw new Error(`omp has no model matching --verifier-model "${selector}".${hint}`);
 		}
-		const usable = matches.filter(model => CHAT_COMPLETION_APIS.has(model.api));
-		if (usable.length === 0) {
-			const dialects = [...new Set(matches.map(model => model.api))].join(", ");
-			throw new Error(
-				`Verifier model "${selector}" speaks "${dialects}". Scoring reads a token-logprob distribution from an OpenAI-compatible chat-completions endpoint, which that dialect does not expose. Pass --verifier-model with an openai-completions model, such as deepseek/deepseek-v4-flash.`,
-			);
-		}
-		// A bare id can name entries across providers; take the first one omp can
-		// actually authenticate, exactly as its auth gateway filters by credential.
+		// Prefer the known native scoring path for an ambiguous bare selector. The
+		// sort is stable, so catalog order still decides within each class. Every
+		// other provider remains eligible and is validated by the live probe.
+		const usable = [...matches].sort(
+			(left, right) => Number(servesNativeScoreTags(right.baseUrl)) - Number(servesNativeScoreTags(left.baseUrl)),
+		);
+		// Then take the first entry omp can actually authenticate, exactly as its auth
+		// gateway filters by credential.
 		for (const model of usable) {
 			const apiKey = await resolved.apiKey(model);
 			if (!apiKey) continue;
@@ -135,7 +155,8 @@ export async function resolveVerifierEndpoint(selector: string, source?: ModelSo
 				provider: model.provider,
 				model: model.wireId ?? model.id,
 				baseUrl: model.baseUrl,
-				apiKey: apiKey === NO_AUTH ? KEYLESS_PLACEHOLDER : apiKey,
+				apiKey,
+				nativeScoreTags: servesNativeScoreTags(model.baseUrl),
 			};
 		}
 		const providers = [...new Set(usable.map(model => model.provider))];
