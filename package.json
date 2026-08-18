@@ -28,7 +28,7 @@
 		"omp-best-of": "src/cli.ts"
 	},
 	"scripts": {
-		"check": "bun run check:types && bun run check:catalog && bun test",
+		"check": "bun run check:types && bun run check:catalog && bun run test",
 		"check:types": "tsc -p tsconfig.json --noEmit",
 		"check:catalog": "bun scripts/validate-catalog.ts",
 		"test": "bun test",
@@ -54,6 +54,7 @@
 		"src",
 		"python",
 		"README.md",
-		"LICENSE"
+		"LICENSE",
+		"bunfig.toml"
 	]
 }

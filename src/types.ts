@@ -7,6 +7,8 @@ export interface BestOfOptions {
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
+	/** Candidate thinking level passed through to `omp --thinking`; empty keeps the model default. */
+	thinking: string;
 	apply: boolean;
 	seed: number;
 	criteria: Record<string, string>;

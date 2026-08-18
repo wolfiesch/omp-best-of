@@ -79,6 +79,7 @@ async function runCandidate(
 		"yolo",
 		"--max-time",
 		options.maxTime,
+		...(options.thinking ? ["--thinking", options.thinking] : []),
 		"-p",
 		prompt,
 	];
@@ -112,7 +113,8 @@ async function runCandidate(
 	};
 }
 
-function verifierTrajectory(candidate: CandidateResult): string {
+/** Composes the exact text the verifier ranks. Shared with the benchmark harness so re-ranking a saved pool matches a live run. */
+export function composeVerifierTrajectory(candidate: Pick<CandidateResult, "transcript" | "patch" | "exitCode" | "stderr">): string {
 	return [
 		candidate.transcript,
 		"## Final repository patch",
@@ -181,7 +183,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 			emit(options, { phase: "verifying", completedCandidates: options.n, totalCandidates: options.n, message: `Ranking ${eligible.length} candidates` });
 			verifier = await verifyCandidates({
 				problem: options.task,
-				candidates: eligible.map(verifierTrajectory),
+				candidates: eligible.map(composeVerifierTrajectory),
 				criteria: options.criteria,
 				model: options.verifierModel,
 				nEvaluations: options.nEvaluations,

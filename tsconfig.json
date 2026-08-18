@@ -2,7 +2,9 @@
 	"compilerOptions": {
 		"target": "ES2024",
 		"module": "ESNext",
-		"lib": ["ES2024"],
+		"lib": [
+			"ES2024"
+		],
 		"moduleResolution": "Bundler",
 		"moduleDetection": "force",
 		"strict": true,
@@ -12,7 +14,14 @@
 		"resolveJsonModule": true,
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
-		"types": ["bun"]
+		"types": [
+			"bun"
+		]
 	},
-	"include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]
+	"include": [
+		"src/**/*.ts",
+		"test/**/*.ts",
+		"scripts/**/*.ts",
+		"bench/**/*.ts"
+	]
 }

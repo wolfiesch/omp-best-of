@@ -1,0 +1,5 @@
+{
+	"name": "bench-interval-merge",
+	"private": true,
+	"type": "module"
+}

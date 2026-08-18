@@ -113,6 +113,7 @@ The standalone form writes progress to stderr and a JSON summary to stdout, so `
 | `--evaluations <n>` | `1` | Repeated verifier evaluations per criterion |
 | `--pivots <n>` | `2` | Pivots in the probabilistic tournament |
 | `--max-time <duration>` | `20m` | Per-candidate wall-clock limit, such as `90s`, `20m`, `2h` |
+| `--thinking <level>` | model default | Candidate thinking level, such as `off`, `low`, `high`; trades candidate quality for cost |
 | `--seed <n>` | `0` | Tournament seed |
 | `--apply` | off | Apply the winning patch to the parent checkout |
 | `--select-only` | on | Rank and keep artifacts without touching the checkout |
@@ -150,7 +151,7 @@ Each candidate is shown to the verifier as its rendered trajectory, its final pa
 
 Total cost is `N` generation runs plus verification. Two properties matter when budgeting:
 
-- Verification is comparison heavy but output light. It reads long trajectory pairs and emits few tokens, so it benefits from prefix caching and is not priced like generation.
+- Verification is comparison heavy. It reads long trajectory pairs, which prefix caching absorbs well, but at default DeepSeek reasoning effort it also thinks at length, so its output tokens are not negligible. On the small fixtures in `bench/`, verification was 25 to 51 percent of run cost.
 - Candidates run concurrently, so wall-clock time is closer to the slowest candidate than to the sum of all of them.
 
 Every run reports its own numbers instead of relying on estimates. The result includes per-candidate requests, input, output, cache read, cache write, reasoning tokens, and cost, plus verifier calls, input, output, reasoning tokens, and the measured cache hit rate. Use those fields for your own comparisons; they are the only cost numbers this project claims.
@@ -163,6 +164,17 @@ For reference, the upstream project reports the following on Terminal-Bench 2.1 
 | Best-of-5 | 78.7% | 88.0% | 96.6% |
 
 Those results belong to the upstream authors and have not been reproduced here. Nothing in this repository should be read as an independent benchmark.
+
+### Measured on this repository
+
+`bench/` holds a selection benchmark that pays for a candidate pool once, labels every
+candidate with a hidden oracle, and reports random pass@1, verifier-selected, and oracle
+pass@N over the same pool. `bench/RESULTS.md` records what it measured here: a 4-candidate
+pool on a small task cost about $0.05 to $0.08 including verification and took 95s to 693s,
+23 of 24 candidates passed their oracle so most pools were saturated, and on the single
+discriminating pool the verifier ranked the failing candidate first. Those runs use small
+single-function fixtures, so they test the harness and the cost model rather than the
+method's published accuracy.
 
 ## Artifacts
 
@@ -199,6 +211,7 @@ Losing candidates are kept, so a rejected patch can still be inspected, replayed
 bun install
 bun run check          # type check plus tests
 bun run smoke:verifier # live verifier round trip, needs credentials and network
+bun bench/run.ts --help # selection benchmark, spends money on model calls
 ```
 
 `bun run check` is offline. The smoke script makes real verifier calls and is intended for confirming credentials and the Python bridge end to end.
@@ -212,7 +225,9 @@ src/verifier.ts    credential handoff and JSON contract with the Python bridge
 src/transcript.ts  JSON event stream parsing and usage aggregation
 src/args.ts        flags, defaults, criteria, help text
 src/cli.ts         standalone entry point
-python/verify.py   thin stdin/stdout adapter over llm-verifier
+bench/run.ts       selection benchmark, pool storage, scorecards
+bench/oracle.ts    fixture materialization and hidden-oracle labeling
+bench/tasks/       benchmark fixtures: prompt, repo, oracle, reference solution
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.

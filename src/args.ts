@@ -6,6 +6,7 @@ export interface BestOfCliOptions {
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
+	thinking: string;
 	apply: boolean;
 	seed: number;
 }
@@ -29,6 +30,7 @@ Options:
   --evaluations <n>         Repeated evaluations per criterion (default: 1)
   --pivots <n>              Probabilistic tournament pivots (default: 2)
   --max-time <duration>     Per-candidate limit, such as 20m (default: 20m)
+  --thinking <level>        Candidate thinking level, such as off or high (default: model default)
   --seed <n>                Tournament seed (default: 0)
   --apply                   Apply the selected patch to the clean parent checkout
   --select-only             Rank and retain artifacts without applying (default)
@@ -86,6 +88,7 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 		nEvaluations: 1,
 		pivots: 2,
 		maxTime: "20m",
+		thinking: "",
 		apply: false,
 		seed: 0,
 	};
@@ -127,6 +130,10 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 				break;
 			case "--max-time":
 				options.maxTime = args[++index] ?? "";
+				break;
+			case "--thinking":
+				options.thinking = args[++index] ?? "";
+				if (!options.thinking) throw new Error("--thinking requires a value");
 				break;
 			case "--seed":
 				options.seed = integer(args[++index], arg);
