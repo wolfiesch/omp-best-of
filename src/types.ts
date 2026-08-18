@@ -75,6 +75,15 @@ export interface VerifierUsage {
 	reported_cost_usd?: number;
 }
 
+export interface VerifierAuditAttempts {
+	totalAttempts: number;
+	acceptedAttempts: number;
+	discardedAttempts: number;
+	errorAttempts: number;
+	providerRequests: number;
+	byCandidateRound: Record<string, number>;
+}
+
 export interface VerifierResult {
 	backend: VerifierBackend;
 	index: number;
@@ -83,6 +92,8 @@ export interface VerifierResult {
 	nComparisons: number;
 	criteria: string[];
 	usage: VerifierUsage;
+	/** Sampled candidate-audit retry attribution. */
+	auditAttempts?: VerifierAuditAttempts;
 }
 
 export interface SelectionResult {
@@ -115,12 +126,19 @@ export interface CandidateSummary {
 	usage: UsageSummary;
 }
 
+/** Identifies a shared sampled-verifier cache without disclosing its local path. */
+export interface SampledVerifierCacheReference {
+	key: string;
+	shared: true;
+}
+
 export interface BestOfManifest {
 	schemaVersion: 1;
 	runId: string;
 	selection: SelectionResult;
 	candidateSummaries: CandidateSummary[];
 	verifier: VerifierResult | null;
+	sampledVerifierCache?: SampledVerifierCacheReference;
 	application: ApplicationResult;
 	durationMs: number;
 }

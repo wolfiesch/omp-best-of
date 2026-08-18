@@ -3,7 +3,7 @@ import path from "node:path";
 import { writePrivateFile } from "./artifacts";
 import { runCommand } from "./process";
 import { parseJsonTranscript } from "./transcript";
-import type { UsageSummary, VerifierResult, VerifierUsage } from "./types";
+import type { UsageSummary, VerifierAuditAttempts, VerifierResult, VerifierUsage } from "./types";
 
 export interface SampledVerifierProgress {
 	stage: "audit" | "comparison";
@@ -59,13 +59,29 @@ interface CachedAudit extends CandidateAudit {
 	probes: string[];
 }
 
+type CandidateAuditAttemptStatus = "accepted" | "insufficient_probes" | "error";
+
+interface CachedAuditAttempt {
+	candidate: number;
+	round: number;
+	ordinal: number;
+	status: CandidateAuditAttemptStatus;
+	requiredProbes: number;
+	observedProbes: number;
+	usage: UsageSummary;
+	error?: string;
+}
+
 interface SampledCache {
-	version: 2;
+	version: typeof SAMPLED_VERIFIER_CACHE_VERSION;
 	digest: string;
 	audits: Record<string, CachedAudit>;
 	comparisons: Record<string, CachedComparison>;
+	attempts: CachedAuditAttempt[];
 }
-const JUDGE_PROMPT_VERSION = 10;
+export const SAMPLED_VERIFIER_CACHE_VERSION = 3;
+export const SAMPLED_VERIFIER_PROMPT_VERSION = 11;
+const JUDGE_PROMPT_VERSION = SAMPLED_VERIFIER_PROMPT_VERSION;
 const CANDIDATE_AUDIT_ROUNDS = 2;
 
 export const SAMPLED_VERIFIER_SETTINGS = {
@@ -222,11 +238,17 @@ UNTRUSTED_EVIDENCE_JSON
 ${JSON.stringify(evidence)}`;
 }
 
+interface JudgeInvocation {
+	response: string;
+	usage: UsageSummary;
+	recordedToolEvidence: string;
+}
+
 async function invokeJudge(
 	input: SampledVerifierInput,
 	prompt: string,
 	options: { cwd?: string; tools?: boolean } = {},
-): Promise<{ response: string; usage: UsageSummary; recordedToolEvidence: string }> {
+): Promise<JudgeInvocation> {
 	const omp = input.ompBin ?? process.env.OMP_BEST_OF_OMP_BIN ?? "omp";
 	const cwd = options.cwd ?? input.cwd ?? process.cwd();
 	const toolFlags = options.tools
@@ -284,15 +306,8 @@ function mergeUsageSummaries(total: UsageSummary, next: UsageSummary): UsageSumm
 		costUsd: total.costUsd + next.costUsd,
 	};
 }
-
-async function auditCandidate(
-	input: SampledVerifierInput,
-	index: number,
-	priorAudits: CandidateAudit[],
-): Promise<CandidateAudit & { usage: UsageSummary; probes: string[] }> {
-	const candidateCwd = input.candidateCwds?.[index] ?? undefined;
-	const requiredProbes = priorAudits.length === 0 ? 1 : 3;
-	let usage: UsageSummary = {
+function emptyUsageSummary(): UsageSummary {
+	return {
 		requests: 0,
 		inputTokens: 0,
 		outputTokens: 0,
@@ -301,20 +316,83 @@ async function auditCandidate(
 		reasoningTokens: 0,
 		costUsd: 0,
 	};
-	for (let attempt = 0; attempt < 3; attempt += 1) {
+}
+
+function sanitizeAuditAttemptError(error: unknown): string {
+	const message = error instanceof Error ? error.message : "";
+	if (message === "Sampled verifier timed out") return message;
+	if (message.startsWith("Sampled verifier failed ("))
+		return message.match(/^Sampled verifier failed \(-?\d+\)/)?.[0] ?? "Sampled verifier failed";
+	if (message.startsWith("Sampled verifier returned no final response")) return "Sampled verifier returned no final response";
+	if (message.startsWith("Sampled verifier audit returned")) return "Sampled verifier audit response was invalid";
+	if (error instanceof DOMException && error.name === "AbortError") return "Sampled verifier aborted";
+	return "Sampled verifier audit invocation failed";
+}
+
+async function auditCandidate(
+	input: SampledVerifierInput,
+	index: number,
+	round: number,
+	priorAudits: CandidateAudit[],
+	priorAttempts: CachedAuditAttempt[],
+	recordAttempt: (attempt: CachedAuditAttempt) => Promise<void>,
+): Promise<CandidateAudit & { usage: UsageSummary; probes: string[] }> {
+	const candidateCwd = input.candidateCwds?.[index] ?? undefined;
+	const requiredProbes = priorAudits.length === 0 ? 1 : 3;
+	let usage = priorAttempts.reduce((total, attempt) => mergeUsageSummaries(total, attempt.usage), emptyUsageSummary());
+	for (let attempt = priorAttempts.length; attempt < 3; attempt += 1) {
 		const retry =
 			attempt === 0
 				? ""
-				: `\n\nYour previous attempt was discarded because it recorded fewer than ${requiredProbes} audit_probe results. Execute at least ${requiredProbes} audit_probe calls before returning JSON.`;
-		const result = await invokeJudge(input, buildCandidateAuditPrompt(input, index, priorAudits) + retry, {
-			cwd: candidateCwd,
-			tools: candidateCwd !== undefined,
-		});
+				: `\n\nYour previous attempt was discarded or failed. Execute at least ${requiredProbes} audit_probe calls before returning JSON.`;
+		let result: JudgeInvocation;
+		try {
+			result = await invokeJudge(input, buildCandidateAuditPrompt(input, index, priorAudits) + retry, {
+				cwd: candidateCwd,
+				tools: candidateCwd !== undefined,
+			});
+		} catch (error) {
+			await recordAttempt({
+				candidate: index,
+				round,
+				ordinal: attempt + 1,
+				status: "error",
+				requiredProbes,
+				observedProbes: 0,
+				usage: emptyUsageSummary(),
+				error: sanitizeAuditAttemptError(error),
+			});
+			throw error;
+		}
 		usage = mergeUsageSummaries(usage, result.usage);
 		const probes = extractAuditProbes(result.recordedToolEvidence);
-		if (!candidateCwd || probes.length >= requiredProbes) {
-			return { ...parseCandidateAudit(result.response), usage, probes };
+		let audit: CandidateAudit;
+		try {
+			audit = parseCandidateAudit(result.response);
+		} catch (error) {
+			await recordAttempt({
+				candidate: index,
+				round,
+				ordinal: attempt + 1,
+				status: "error",
+				requiredProbes,
+				observedProbes: probes.length,
+				usage: result.usage,
+				error: sanitizeAuditAttemptError(error),
+			});
+			throw error;
 		}
+		const accepted = !candidateCwd || probes.length >= requiredProbes;
+		await recordAttempt({
+			candidate: index,
+			round,
+			ordinal: attempt + 1,
+			status: accepted ? "accepted" : "insufficient_probes",
+			requiredProbes,
+			observedProbes: probes.length,
+			usage: result.usage,
+		});
+		if (accepted) return { ...audit, usage, probes };
 	}
 	throw new Error(`Sampled verifier audit required ${requiredProbes} executable probe(s) after 3 attempts`);
 }
@@ -365,18 +443,19 @@ async function loadCache(input: SampledVerifierInput): Promise<SampledCache> {
 	try {
 		const parsed = JSON.parse(await Bun.file(input.cachePath).text()) as SampledCache;
 		if (
-			parsed.version === 2 &&
+			parsed.version === SAMPLED_VERIFIER_CACHE_VERSION &&
 			parsed.digest === digest &&
 			parsed.audits &&
 			typeof parsed.audits === "object" &&
 			parsed.comparisons &&
-			typeof parsed.comparisons === "object"
+			typeof parsed.comparisons === "object" &&
+			Array.isArray(parsed.attempts)
 		)
 			return parsed;
 	} catch {
-		// A missing, stale, or partial cache is not reusable.
+		// A missing or stale cache is not reusable.
 	}
-	return { version: 2, digest, audits: {}, comparisons: {} };
+	return { version: SAMPLED_VERIFIER_CACHE_VERSION, digest, audits: {}, comparisons: {}, attempts: [] };
 }
 
 function emptyUsage(): VerifierUsage {
@@ -400,6 +479,25 @@ function addUsage(total: VerifierUsage, usage: UsageSummary): void {
 	total.output_tokens += usage.outputTokens;
 	total.reasoning_tokens += usage.reasoningTokens;
 	total.reported_cost_usd = (total.reported_cost_usd ?? 0) + usage.costUsd;
+}
+function aggregateAuditAttempts(attempts: CachedAuditAttempt[]): VerifierAuditAttempts {
+	const aggregate: VerifierAuditAttempts = {
+		totalAttempts: attempts.length,
+		acceptedAttempts: 0,
+		discardedAttempts: 0,
+		errorAttempts: 0,
+		providerRequests: 0,
+		byCandidateRound: {},
+	};
+	for (const attempt of attempts) {
+		aggregate.providerRequests += attempt.usage.requests;
+		const key = auditCacheKey(attempt.round, attempt.candidate);
+		aggregate.byCandidateRound[key] = (aggregate.byCandidateRound[key] ?? 0) + 1;
+		if (attempt.status === "accepted") aggregate.acceptedAttempts += 1;
+		else if (attempt.status === "insufficient_probes") aggregate.discardedAttempts += 1;
+		else aggregate.errorAttempts += 1;
+	}
+	return aggregate;
 }
 
 export function aggregatePairwiseJudgments(
@@ -507,7 +605,11 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 				try {
 					const priorAudits = Array.from({ length: round }, (_, priorRound) => cache.audits[auditCacheKey(priorRound, index)]);
 					if (priorAudits.some((audit) => !audit)) throw new Error("Sampled verifier prior audit cache is incomplete");
-					const audit = await auditCandidate(workerInput, index, priorAudits);
+					const priorAttempts = cache.attempts.filter((attempt) => attempt.candidate === index && attempt.round === round);
+					const audit = await auditCandidate(workerInput, index, round, priorAudits, priorAttempts, async (attempt) => {
+						cache.attempts.push(attempt);
+						await persist();
+					});
 					cache.audits[auditCacheKey(round, index)] = { index, round, ...audit };
 					await persist();
 					addUsage(usage, audit.usage);
@@ -571,5 +673,6 @@ export async function verifyCandidatesSampled(input: SampledVerifierInput): Prom
 		...aggregatePairwiseJudgments(input.candidates.length, input.nEvaluations, completed),
 		criteria: Object.keys(input.criteria),
 		usage,
+		auditAttempts: aggregateAuditAttempts(cache.attempts),
 	};
 }

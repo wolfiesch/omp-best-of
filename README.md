@@ -34,7 +34,7 @@ flowchart LR
     G -->|yes| I[HEAD unchanged? apply winner]
 ```
 
-1. **Preflight.** Resolve the repository root, refuse a dirty working tree, and record `HEAD`.
+1. **Preflight.** Resolve the repository root, refuse a dirty working tree, and record `HEAD`. In sampled mode the local audit-sandbox preflight runs next, and the single paid verifier capability probe runs only after that check passes.
 2. **Fan out.** Capture one clean baseline, then create an OMP-managed isolation workspace per candidate. OMP selects the host's best copy-on-write backend and falls back to a Git worktree when needed.
 3. **Generate.** Run one headless Oh My Pi session per isolated workspace, concurrently, in JSON event mode with extensions and sessions disabled.
 4. **Collect.** Parse each transcript and use OMP's baseline-aware delta capture to produce a binary-safe patch.
@@ -76,9 +76,13 @@ provider API client. This supports subscription-authenticated routes such as
   --verifier-model openai-codex/gpt-5.6-luna Fix the failing test
 ```
 
-Sampled mode runs one live judgment before candidate generation to prove the OMP route
-works. It does not receive token logprobs and must not be presented as a reproduction of
-LLM-as-a-Verifier's continuous scoring.
+Sampled startup is ordered so the cheapest check fails first. The repository check runs
+before anything else, then a local audit-sandbox preflight proves the OS-sandboxed probe
+can actually execute on this host, then one paid model capability probe proves the OMP
+route works, and only then does candidate generation begin. A failed sandbox preflight
+starts no candidate subprocess and makes no model or provider call. Sampled mode does not
+receive token logprobs and must not be presented as a reproduction of LLM-as-a-Verifier's
+continuous scoring.
 
 ## Install
 
@@ -151,7 +155,7 @@ The standalone form writes progress to stderr and a JSON summary to stdout. `sel
 | `OMP_BEST_OF_PYTHON` | Run the bridge with an existing interpreter instead of `uv`. That interpreter must already provide `llm-verifier` |
 | `OMP_BEST_OF_VERIFIER_BRIDGE` | Override the bridge script path |
 | `OMP_BEST_OF_OMP_BIN` | Override the `omp` binary used for candidates and sampled judgments |
-| `PI_CODING_AGENT_DIR` | Moves the artifact root along with the Oh My Pi agent directory |
+| `PI_CODING_AGENT_DIR` | Moves the artifact root and the shared sampled cache root along with the Oh My Pi agent directory |
 
 ## Verification mechanics
 
@@ -173,7 +177,7 @@ Two verifier backends are available:
   the ranking. A candidate's weakest head-to-head probability breaks majority cycles, followed
   by expected win probability. Semantic contract violations are decisive; validation quality
   is only a tie-breaker. `--evaluations` repeats the pairwise round robin. Results are cached
-  after every call.
+  after every call, in the shared exact-input cache described below.
 
 Both backends use the same three criteria:
 
@@ -191,6 +195,49 @@ workspace and retain completed sandboxed probe evidence, including nonzero exits
 concrete evidence without letting candidate-authored validation narration outweigh implementation
 semantics.
 
+### Sampled caches
+
+Sampled results are cached under the agent data directory rather than inside a timestamped
+run directory, so an interrupted or repeated run reuses the calls it already paid for:
+
+```text
+${PI_CODING_AGENT_DIR:-~/.omp/agent}/best-of/cache/sampled/<digest>.json
+```
+
+The cache is private to the invoking user. The cache directory uses mode `0700` and cache
+files use `0600`.
+
+Each digest covers the exact inputs a judgment depends on: the repository `HEAD`, the exact
+task text, the criteria, the per-candidate evidence, the verifier model, the verifier
+thinking level, the evaluation count, the seed, the prompt and settings identity, and which
+audit tools were available. Any change to any of those resolves a different cache file, so a
+repository, input, model, settings, or tool-availability change is invalidated cleanly instead
+of being rewritten in place or read back as a stale hit. An identical rerun resolves the same
+file and reuses it.
+
+Reuse is local to this machine and this user. There is no provider-global, cross-user, or
+cross-machine cache, and no provider-side caching is claimed. Public result metadata reports
+cache reuse without recording any absolute cache path. The cache file itself is schema
+versioned, and a file written by an older schema is rejected and recomputed rather than
+misread.
+
+### Retry attribution
+
+Every candidate-audit invocation attempt is recorded before another attempt starts, so a run
+that had to retry still explains what it spent. Each record identifies the candidate, the
+round, the attempt ordinal, the outcome status of accepted, insufficient probes, or error,
+the required and observed probe counts, the attempt's usage, and, for an error, a bounded
+sanitized message.
+
+The result carries an aggregate of total attempts, accepted attempts, discarded attempts,
+error attempts, provider requests, and per-candidate and per-round attempt counts. Audit
+attempts are a distinct quantity from the underlying provider requests: one attempt can
+issue several provider requests when the audit uses tools, and a discarded under-probed
+attempt or a failed attempt still consumed provider requests before it was thrown away.
+Discarded under-probed attempts and errors are counted separately from accepted ones.
+
+Attribution is reporting only. Selection and ranking behavior is unchanged by it.
+
 ## Cost and latency model
 
 Total work is `N` generation runs plus verification. Two properties matter when budgeting:
@@ -198,16 +245,20 @@ Total work is `N` generation runs plus verification. Two properties matter when 
 - Logprob verification is comparison heavy and can itself consume substantial reasoning
   tokens. Sampled ranking uses $2N + E N(N-1)/2$ verifier invocations for $N$ candidates
   and $E$ pairwise evaluations: 14 invocations for four candidates and 44 for eight at one
-  evaluation. A live run adds one capability-preflight invocation. The first $2N$ ranking
+  evaluation. A live run adds one paid capability-preflight invocation; the audit-sandbox
+  preflight that precedes it is local and costs nothing. The first $2N$ ranking
   calls are two independent candidate audits; the second pass receives and challenges the
   first.
-  One verifier invocation can contain multiple provider requests when an audit uses tools.
+  One verifier invocation can contain multiple provider requests when an audit uses tools,
+  and a retried audit spends provider requests on every attempt, not only the accepted one.
 - Candidates run concurrently. Each sampled audit pass and the comparison stage run up to
   four calls at a time, so wall clock is lower than the sum of call durations.
 
 Every run reports candidate and verifier token usage. Sampled-mode `reported_cost_usd` is
 OMP runtime accounting, not an incremental bill for subscription-routed usage. Subscription
 plans still impose provider usage limits.
+
+Reused sampled cache entries cost nothing on a rerun with identical inputs.
 
 For reference, the upstream project reports the following on Terminal-Bench 2.1 with DeepSeek V4 Flash for both generation and verification:
 
@@ -256,7 +307,7 @@ Every run writes a durable directory, by default under `~/.omp/agent/best-of/run
     changes.patch     binary-safe patch against the run HEAD
     stderr.log        candidate stderr and patch capture errors
   candidate-2/ ...
-  verifier-cache.json verifier score cache for the run
+  verifier-cache.json run-local verifier score cache
   winner.patch        written only when a non-empty patch is applied
   result.json         versioned summary, selection, application, ranking, usage, timings
 ```
@@ -264,6 +315,10 @@ Every run writes a durable directory, by default under `~/.omp/agent/best-of/run
 Run and candidate directories use mode `0700`; artifact files use `0600`. `result.json`
 contains compact candidate summaries and relative artifact paths rather than full
 transcripts, patches, stderr, or temporary workspace paths.
+
+Sampled reuse does not live here. Sampled judgments key their cache by exact input under the
+shared `best-of/cache/sampled/` directory described in [Sampled caches](#sampled-caches), so
+reuse survives across runs instead of being trapped in one timestamped run directory.
 
 Losing candidates are kept, so a rejected patch can still be inspected, replayed, or applied by hand.
 

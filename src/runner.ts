@@ -11,12 +11,14 @@ import {
 } from "@oh-my-pi/pi-coding-agent/task/worktree";
 import { parseDurationMs } from "./args";
 import { ensurePrivateDirectory, secureExistingFile, writePrivateFile } from "./artifacts";
+import { assertAuditSandboxSupported } from "./audit-probe-extension";
 import { resolveVerifierEndpoint } from "./model";
 import { requireCommand, runCommand } from "./process";
 import { assertSampledVerifierSupported, sampledVerifierUsage, verifyCandidatesSampled } from "./sampled-verifier";
 import { parseJsonTranscript } from "./transcript";
 import type { BestOfManifest, BestOfOptions, BestOfProgress, BestOfResult, CandidateResult, UsageSummary, VerifierResult } from "./types";
 import { assertScoringSupported, verifyCandidates } from "./verifier";
+import { prepareSharedSampledVerifierCache, type SharedSampledVerifierCache } from "./verifier-cache";
 
 const DEFAULT_AGENT_PROMPT = `Work independently on the task below. Modify the repository directly, run focused validation, and finish only when the requested behavior works. Do not commit changes. Preserve unrelated user work.\n\n`;
 const VERIFIER_TIMEOUT_MS = 120_000;
@@ -250,7 +252,9 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 			message: "Probing verifier scoring capability",
 		});
 		await assertScoringSupported(endpoint, options.signal);
-	} else if (options.verify) {
+	} else if (options.verify && options.verifierBackend === "sampled") {
+		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Checking sampled audit sandbox" });
+		await assertAuditSandboxSupported(root, options.signal);
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Probing sampled verifier" });
 		sampledPreflightUsage = await assertSampledVerifierSupported(options.verifierModel, root, options.signal);
 	}
@@ -317,6 +321,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 		let verifier: VerifierResult | null = null;
 		let selectedCandidate: CandidateResult | null = null;
 		const verifierCachePath = path.join(artifacts, "verifier-cache.json");
+		let sampledVerifierCache: SharedSampledVerifierCache | undefined;
 		if (!options.verify) {
 			emit(options, { phase: "verifying", completedCandidates: options.n, totalCandidates: options.n, message: "Skipping verification" });
 		} else if (eligible.length > 1) {
@@ -331,20 +336,34 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 				criteria: options.criteria,
 				nEvaluations: options.nEvaluations,
 				seed: options.seed,
-				cachePath: verifierCachePath,
 				signal: options.signal,
 				timeoutMs: VERIFIER_TIMEOUT_MS,
 			};
 			try {
 				if (options.verifierBackend === "sampled") {
-					verifier = await verifyCandidatesSampled({
-						...common,
-						candidates: eligible.map(composeSampledVerifierEvidence),
+					const candidates = eligible.map(composeSampledVerifierEvidence);
+					const candidateCwds = eligible.map((candidate) => candidate.workspace);
+					const cache = await prepareSharedSampledVerifierCache({
+						repositoryHead: head,
+						task: options.task,
+						criteria: options.criteria,
+						candidates,
 						model: options.verifierModel,
 						thinking: options.verifierThinking,
+						nEvaluations: options.nEvaluations,
+						seed: options.seed,
+						candidateTools: candidateCwds.map(Boolean),
+					});
+					sampledVerifierCache = cache;
+					verifier = await verifyCandidatesSampled({
+						...common,
+						candidates,
+						model: options.verifierModel,
+						thinking: options.verifierThinking,
+						cachePath: cache.path,
 						preflightUsage: sampledPreflightUsage,
 						cwd: root,
-						candidateCwds: eligible.map((candidate) => candidate.workspace),
+						candidateCwds,
 						onProgress: (progress) =>
 							emit(options, {
 								phase: "verifying",
@@ -357,13 +376,14 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 					if (!endpoint) throw new Error("Verifier endpoint was not resolved");
 					verifier = await verifyCandidates({
 						...common,
+						cachePath: verifierCachePath,
 						candidates: eligible.map(composeVerifierTrajectory),
 						endpoint,
 						pivots: Math.min(options.pivots, eligible.length),
 					});
 				}
 			} finally {
-				await secureExistingFile(verifierCachePath);
+				if (options.verifierBackend === "logprob") await secureExistingFile(verifierCachePath);
 			}
 			selectedCandidate = eligible[verifier.index];
 		} else {
@@ -414,6 +434,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 				usage: candidate.usage,
 			})),
 			verifier,
+			...(sampledVerifierCache ? { sampledVerifierCache: sampledVerifierCache.reference } : {}),
 			application: result.application,
 			durationMs,
 		};

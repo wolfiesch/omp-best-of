@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runBestOf } from "../src/runner";
@@ -84,6 +84,8 @@ const mockResponse = mockAudit
 		: "done";
 mockEmit("assistant", [{ type: "text", text: mockResponse }], mockUsage);
 `;
+
+const linuxTest = process.platform === "linux" ? test : test.skip;
 
 test("validates programmatic options before repository or verifier preflight", async () => {
 	await expect(runBestOf({ ...options("/does/not-exist"), maxTime: "nonsense" })).rejects.toThrow("Invalid max time: nonsense");
@@ -208,6 +210,46 @@ test("detects parent mutation during generation and still cleans workspaces", as
 		await rm(temporaryRoot, { recursive: true, force: true });
 	}
 }, 15_000);
+
+linuxTest("fails sampled sandbox preflight before invoking candidates or the sampled verifier", async () => {
+	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-sandbox-preflight-test-"));
+	const omp = path.join(temporaryRoot, "mock-omp.sh");
+	const invocations = path.join(temporaryRoot, "omp-invocations.log");
+	const bin = path.join(temporaryRoot, "bin");
+	const previousPath = process.env.PATH;
+	try {
+		const repo = await initializeRepository(temporaryRoot);
+		const git = Bun.which("git");
+		if (!git) throw new Error("git is required for runner behavior tests");
+		await mkdir(bin);
+		await Bun.write(path.join(bin, "git"), `#!/bin/sh\nexec ${JSON.stringify(git)} "$@"\n`);
+		await chmod(path.join(bin, "git"), 0o755);
+		await Bun.write(path.join(bin, "bwrap"), "#!/bin/sh\nexit 1\n");
+		await chmod(path.join(bin, "bwrap"), 0o755);
+		await Bun.write(omp, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(invocations)}\n`);
+		await chmod(omp, 0o755);
+		const preparing: string[] = [];
+		process.env.PATH = bin;
+		await withRunnerEnvironment(temporaryRoot, omp, async () => {
+			await expect(
+				runBestOf({
+					...options(repo),
+					apply: false,
+					onProgress: (event) => {
+						if (event.phase === "preparing") preparing.push(event.message);
+					},
+				}),
+			).rejects.toThrow("audit_probe sandbox preflight failed");
+		});
+		expect(preparing).toContain("Checking sampled audit sandbox");
+		expect(preparing).not.toContain("Probing sampled verifier");
+		expect(await Bun.file(invocations).exists()).toBe(false);
+	} finally {
+		if (previousPath === undefined) delete process.env.PATH;
+		else process.env.PATH = previousPath;
+		await rm(temporaryRoot, { recursive: true, force: true });
+	}
+});
 
 test("forwards sampled verifier progress using the existing verification progress shape", async () => {
 	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-runner-progress-test-"));

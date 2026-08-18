@@ -448,3 +448,229 @@ describe("sampled verifier usage", () => {
 		});
 	});
 });
+
+async function createRetryTraceMock(root: string, statePath: string, logPath: string): Promise<string> {
+	const omp = path.join(root, "retry-trace-mock-omp.ts");
+	await Bun.write(
+		omp,
+		`#!/usr/bin/env bun
+import { appendFile, readFile } from "node:fs/promises";
+const prompt = process.argv.at(-1) ?? "";
+const audit = prompt.includes("Audit one candidate independently");
+const challengePassDirective = "This is the challenge pass. Before returning, execute at least three focused contract-derived probes";
+const state = JSON.parse(await readFile(${JSON.stringify(statePath)}, "utf8"));
+await appendFile(${JSON.stringify(logPath)}, JSON.stringify({ audit }) + "\\n");
+if (audit && state.mode === "error" && prompt.includes(state.errorCandidate)) {
+  console.error("provider failure secret=" + state.secret + " workspace=" + state.workspace);
+  process.exit(17);
+}
+const challengePass = prompt.includes(challengePassDirective);
+const shouldSkipProbes =
+  audit &&
+  state.skipCandidate &&
+  prompt.includes(state.skipCandidate) &&
+  !challengePass &&
+  !prompt.includes("discarded or failed");
+if (audit && !shouldSkipProbes) {
+  const probeCount = challengePass ? 3 : 1;
+  for (let index = 0; index < probeCount; index += 1) {
+    console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "toolCall", name: "audit_probe", arguments: { command: ["bun", "-e", "console.log(1)"] } }] } }));
+    console.log(JSON.stringify({ type: "message_end", message: { role: "toolResult", content: [{ type: "text", text: "exit_code=0\\nstdout:\\n1" }] } }));
+  }
+}
+const text = audit
+  ? JSON.stringify({ probabilityPass: 90, findings: [], summary: "checked" })
+  : JSON.stringify({ probabilityA: 50, reason: "tie" });
+for (let request = 1; request < (state.requests ?? 1); request += 1) {
+  console.log(JSON.stringify({
+    type: "message_end",
+    message: { role: "assistant", content: [], usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } } },
+  }));
+}
+
+console.log(JSON.stringify({
+  type: "message_end",
+  message: {
+    role: "assistant",
+    content: [{ type: "text", text }],
+    usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } },
+  },
+}));
+`,
+	);
+	await chmod(omp, 0o755);
+	return omp;
+}
+
+function retryTraceInput(root: string, omp: string, cachePath: string, candidateCwds?: string[]) {
+	return {
+		problem: "Choose",
+		candidates: ["candidate-a", "candidate-b"],
+		criteria: { Correctness: "Works" },
+		model: "test/model",
+		nEvaluations: 1,
+		seed: 0,
+		cachePath,
+		cwd: root,
+		ompBin: omp,
+		...(candidateCwds ? { candidateCwds } : {}),
+	};
+}
+
+test("records first-attempt audit success in the schema v3 retry trace", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-retry-first-success-"));
+	try {
+		const statePath = path.join(root, "state.json");
+		const logPath = path.join(root, "calls.jsonl");
+		await Bun.write(statePath, JSON.stringify({ mode: "success" }));
+		const omp = await createRetryTraceMock(root, statePath, logPath);
+		const result = await verifyCandidatesSampled(retryTraceInput(root, omp, path.join(root, "cache.json")));
+		expect(result.auditAttempts).toEqual({
+			totalAttempts: 4,
+			acceptedAttempts: 4,
+			discardedAttempts: 0,
+			errorAttempts: 0,
+			providerRequests: 4,
+			byCandidateRound: { "0|0": 1, "0|1": 1, "1|0": 1, "1|1": 1 },
+		});
+		const cache = JSON.parse(await Bun.file(path.join(root, "cache.json")).text());
+		expect(cache.version).toBe(3);
+		expect(cache.attempts).toHaveLength(4);
+		expect(
+			cache.attempts.every((attempt: { ordinal: number; status: string }) => attempt.ordinal === 1 && attempt.status === "accepted"),
+		).toBe(true);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("retries insufficient audit probes and preserves accepted audit usage", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-retry-probes-"));
+	const candidateA = path.join(root, "candidate-a");
+	const candidateB = path.join(root, "candidate-b");
+	try {
+		await Promise.all([mkdir(candidateA), mkdir(candidateB)]);
+		const statePath = path.join(root, "state.json");
+		const logPath = path.join(root, "calls.jsonl");
+		await Bun.write(statePath, JSON.stringify({ mode: "success", skipCandidate: "candidate-a" }));
+		const omp = await createRetryTraceMock(root, statePath, logPath);
+		const result = await verifyCandidatesSampled(retryTraceInput(root, omp, path.join(root, "cache.json"), [candidateA, candidateB]));
+		expect(result.auditAttempts).toEqual({
+			totalAttempts: 5,
+			acceptedAttempts: 4,
+			discardedAttempts: 1,
+			errorAttempts: 0,
+			providerRequests: 5,
+			byCandidateRound: { "0|0": 2, "0|1": 1, "1|0": 1, "1|1": 1 },
+		});
+		const cache = JSON.parse(await Bun.file(path.join(root, "cache.json")).text());
+		expect(cache.audits["0|0"].usage.requests).toBe(2);
+		expect(
+			cache.attempts.find((attempt: { candidate: number; round: number; status: string }) => attempt.candidate === 0 && attempt.round === 0)
+				?.status,
+		).toBe("insufficient_probes");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("records invocation errors before failing the sampled audit", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-retry-error-"));
+	try {
+		const statePath = path.join(root, "state.json");
+		const logPath = path.join(root, "calls.jsonl");
+		await Bun.write(statePath, JSON.stringify({ mode: "error", errorCandidate: "candidate-a", secret: "sk-test-secret", workspace: root }));
+		const omp = await createRetryTraceMock(root, statePath, logPath);
+		const cachePath = path.join(root, "cache.json");
+		await expect(verifyCandidatesSampled(retryTraceInput(root, omp, cachePath))).rejects.toThrow("Sampled verifier failed (17)");
+		const cache = JSON.parse(await Bun.file(cachePath).text());
+		expect(cache.attempts.some((attempt: { status: string }) => attempt.status === "error")).toBe(true);
+		expect(cache.audits["0|0"]).toBeUndefined();
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("invalidates schema v2 sampled caches", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-retry-v2-"));
+	try {
+		const statePath = path.join(root, "state.json");
+		const logPath = path.join(root, "calls.jsonl");
+		const cachePath = path.join(root, "cache.json");
+		await Bun.write(statePath, JSON.stringify({ mode: "success" }));
+		const omp = await createRetryTraceMock(root, statePath, logPath);
+		await verifyCandidatesSampled(retryTraceInput(root, omp, cachePath));
+		const cache = JSON.parse(await Bun.file(cachePath).text());
+		cache.version = 2;
+		await Bun.write(cachePath, `${JSON.stringify(cache)}\n`);
+		await verifyCandidatesSampled(retryTraceInput(root, omp, cachePath));
+		expect((await Bun.file(logPath).text()).trim().split("\n")).toHaveLength(10);
+		expect(JSON.parse(await Bun.file(cachePath).text()).version).toBe(3);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("resumes a partial schema v3 trace without treating failed work as complete", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-retry-resume-"));
+	try {
+		const statePath = path.join(root, "state.json");
+		const logPath = path.join(root, "calls.jsonl");
+		const cachePath = path.join(root, "cache.json");
+		await Bun.write(statePath, JSON.stringify({ mode: "error", errorCandidate: "candidate-a" }));
+		const omp = await createRetryTraceMock(root, statePath, logPath);
+		await expect(verifyCandidatesSampled(retryTraceInput(root, omp, cachePath))).rejects.toThrow("Sampled verifier failed (17)");
+		const partial = JSON.parse(await Bun.file(cachePath).text());
+		expect(partial.audits["0|0"]).toBeUndefined();
+		expect(
+			partial.attempts.some(
+				(attempt: { candidate: number; round: number; status: string }) =>
+					attempt.candidate === 0 && attempt.round === 0 && attempt.status === "error",
+			),
+		).toBe(true);
+		await Bun.write(statePath, JSON.stringify({ mode: "success" }));
+		const result = await verifyCandidatesSampled(retryTraceInput(root, omp, cachePath));
+		expect(result.auditAttempts?.acceptedAttempts).toBe(4);
+		expect(result.auditAttempts?.errorAttempts).toBeGreaterThanOrEqual(1);
+		expect(result.auditAttempts?.byCandidateRound["0|0"]).toBeGreaterThanOrEqual(2);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("aggregates provider requests from recorded audit usage rather than audit attempts", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-retry-requests-"));
+	try {
+		const statePath = path.join(root, "state.json");
+		const logPath = path.join(root, "calls.jsonl");
+		await Bun.write(statePath, JSON.stringify({ mode: "success", requests: 3 }));
+		const omp = await createRetryTraceMock(root, statePath, logPath);
+		const result = await verifyCandidatesSampled(retryTraceInput(root, omp, path.join(root, "cache.json")));
+		expect(result.auditAttempts?.totalAttempts).toBe(4);
+		expect(result.auditAttempts?.providerRequests).toBe(12);
+		expect(result.usage.calls).toBe(15);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("redacts provider secrets and workspace paths from persisted retry errors", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-retry-redaction-"));
+	try {
+		const statePath = path.join(root, "state.json");
+		const logPath = path.join(root, "calls.jsonl");
+		const cachePath = path.join(root, "cache.json");
+		await Bun.write(
+			statePath,
+			JSON.stringify({ mode: "error", errorCandidate: "candidate-a", secret: "sk-test-secret", workspace: `${root}/candidate-a` }),
+		);
+		const omp = await createRetryTraceMock(root, statePath, logPath);
+		await expect(verifyCandidatesSampled(retryTraceInput(root, omp, cachePath))).rejects.toThrow("Sampled verifier failed (17)");
+		const cacheText = await Bun.file(cachePath).text();
+		expect(cacheText).not.toContain("sk-test-secret");
+		expect(cacheText).not.toContain(root);
+		expect(cacheText).not.toContain("provider failure");
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
