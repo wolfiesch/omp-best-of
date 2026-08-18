@@ -1,0 +1,86 @@
+{
+  "claimScope": "Candidate generation and hidden-oracle headroom only; verifier selection did not produce a scorecard.",
+  "source": {
+    "sourceHash": "787a538511c95a40dce83eeb1661f4ab5de44c13",
+    "builtHash": "1bc44850fc7d36c713bd4bf9ba6312b6e96a19e35ee11af957ca720fa10918db",
+    "buildMode": "local",
+    "ompVersion": "omp/17.3.4",
+    "bunVersion": "1.3.14",
+    "platform": "darwin arm64"
+  },
+  "scenario": {
+    "tasks": 10,
+    "candidatesPerTask": 4,
+    "candidateLimit": "2m",
+    "visibleTests": true,
+    "iterationsPerTask": 1,
+    "warmupsDiscarded": 0
+  },
+  "pools": [
+    {
+      "runId": "2026-08-18T06-24-28-540Z",
+      "generator": "nous/deepseek/deepseek-v4-flash-0731",
+      "thinking": "off",
+      "candidateRuns": 40,
+      "generationUsd": 0.39064718,
+      "randomPass1": 0.675,
+      "oraclePass4": 0.8,
+      "discriminatingTasks": [
+        { "taskId": "async-memoize", "passed": 2, "poolSha256": "2c4b7ccd59b09ee0debf0f3fdeab88fa9f7bca70c0db2a5f2ede7b325421d562" },
+        { "taskId": "content-type", "passed": 1, "poolSha256": "081c7f5f469c57da81fa0c914d9531fc835dda32b1a7d25db7a85b06fea24809" }
+      ]
+    },
+    {
+      "runId": "2026-08-18T06-38-18-609Z",
+      "generator": "google-antigravity/gemini-2.5-flash-lite",
+      "thinking": "minimal",
+      "candidateRuns": 40,
+      "generationUsd": 1.06396951,
+      "randomPass1": 0.375,
+      "oraclePass4": 0.7,
+      "discriminatingTasks": [
+        { "taskId": "http-range", "passed": 3, "poolSha256": "e64249f6b4e1f4330086fadb7a492b274580733acf0f6f930a8d3aabc525c0ea" },
+        { "taskId": "async-memoize", "passed": 1, "poolSha256": "91f4c5c832ca433315ef70b18f6773a62a0e38a611fdf6d8823471e3527a2980" },
+        { "taskId": "event-emitter", "passed": 1, "poolSha256": "ede20d76d72ece2bf82565d6d25d946b98f3d2d708bdf3b75f6cbff8b9c5565b" },
+        { "taskId": "interval-subtract", "passed": 1, "poolSha256": "e718b9635b321c51637b6f990e2758d02906b425203499fc0287b1d3a0c642a7" },
+        { "taskId": "query-merge", "passed": 1, "poolSha256": "b7fd9cb8cdc7e34c114da4c62642487cd7768572c91bff37d6b6220210ae7ce3" }
+      ]
+    }
+  ],
+  "uniqueSelectionBank": {
+    "selectionRule": "Use both discriminating DeepSeek pools; from the alternate pool use discriminating tasks not already represented.",
+    "tasks": 6,
+    "candidates": 24,
+    "passingCandidates": 9,
+    "randomPass1": 0.375,
+    "oraclePass4": 1.0,
+    "entries": [
+      { "taskId": "async-memoize", "runId": "2026-08-18T06-24-28-540Z", "passed": 2 },
+      { "taskId": "content-type", "runId": "2026-08-18T06-24-28-540Z", "passed": 1 },
+      { "taskId": "http-range", "runId": "2026-08-18T06-38-18-609Z", "passed": 3 },
+      { "taskId": "event-emitter", "runId": "2026-08-18T06-38-18-609Z", "passed": 1 },
+      { "taskId": "interval-subtract", "runId": "2026-08-18T06-38-18-609Z", "passed": 1 },
+      { "taskId": "query-merge", "runId": "2026-08-18T06-38-18-609Z", "passed": 1 }
+    ]
+  },
+  "selectionAttempts": {
+    "verifier": "deepseek/deepseek-v4-flash",
+    "evaluationsPerCriterion": 1,
+    "pivots": 2,
+    "requestedSeeds": [0, 1, 2],
+    "runDirectories": [
+      "2026-08-18T06-38-26-976Z",
+      "2026-08-18T06-38-26-980Z",
+      "2026-08-18T06-38-26-993Z"
+    ],
+    "runDirectorySeedMapping": null,
+    "successfulRuns": 0,
+    "knownVerifierSpendUsd": null,
+    "launcherReported": {
+      "preflight": "passed before the sweep",
+      "terminalStates": ["HTTP 402 Insufficient Balance", "HTTP 402 Insufficient Balance", "stopped after billing failure"],
+      "evidenceBasis": "Observed supervisor output; the run directories do not preserve commands, seed metadata, or terminal errors."
+    },
+    "notes": "Partial caches are preserved, but no scorecard was produced and partial spend is unknown."
+  }
+}

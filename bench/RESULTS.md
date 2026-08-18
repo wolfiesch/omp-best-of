@@ -178,3 +178,46 @@ and added a failure mode.
 
 Machine-readable aggregate: `bench/results/verifier-sweep-v0.1.1.json`. Raw scorecards and
 the failed run's partial caches remain under `bench/results/2026-08-18T04-*/`.
+
+## Expanded hidden-contract pools
+
+Ten additional JavaScript contract fixtures cover JSON Pointer lookup, HTTP ranges, token
+buckets, asynchronous memoization, event emission, topological sorting, half-open interval
+subtraction, content types, query merging, and immutable deep merge. Each shipped defect
+passes its visible tests and fails its hidden oracle. The checked-in reference solution for
+each fixture passes both.
+
+Two separate four-candidate generation runs used the same clean source and two-minute
+candidate limit:
+
+| Generator | Tasks | Candidate runs | Random pass@1 | Oracle pass@4 | Discriminating tasks | Generation cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| DeepSeek V4 Flash | 10 | 40 | 67.5% | 80.0% | 2 | $0.3906 |
+| Gemini 2.5 Flash Lite | 10 | 40 | 37.5% | 70.0% | 5 | $1.0640 |
+
+Costs are runtime accounting estimates, not invoices. Both runs used source `787a538`,
+built/runtime identity
+`1bc44850fc7d36c713bd4bf9ba6312b6e96a19e35ee11af957ca720fa10918db`,
+omp/17.3.4, Bun 1.3.14, and darwin arm64. Candidate runs were concurrent within each task;
+tasks ran sequentially. The DeepSeek pool completed in 12 minutes 41 seconds and the Gemini
+pool in 10 minutes 33 seconds.
+
+The two pools contain six unique discriminating tasks after taking both DeepSeek tasks and
+the four non-overlapping Gemini tasks. That fixed selection bank has 24 candidates, nine
+passing candidates, random pass@1 of 37.5%, and oracle pass@4 of 100%. It is a selection
+benchmark with real headroom, but it is not a random sample of end-to-end tasks: the bank
+deliberately retains only pools that can distinguish selection methods.
+
+The planned three-seed verifier sweep did not complete. Supervisor output reported that a
+live DeepSeek scoring preflight passed immediately before the sweep, two runs later received
+HTTP 402 `Insufficient Balance`, and the third was stopped after that billing failure. The
+run directories do not preserve commands, seed metadata, or terminal errors, so they cannot
+independently establish that sequence or map directories to seeds. No selection scorecard
+was produced, partial verifier spend is unknown, and this section therefore makes no
+verifier-accuracy claim. Partial caches are preserved for resumption rather than counted as
+failed selections.
+
+Machine-readable aggregate: `bench/results/expanded-pools-v0.1.1.json`. Local raw generation
+artifacts remain under `bench/results/2026-08-18T06-24-28-540Z/` and
+`bench/results/2026-08-18T06-38-18-609Z/`. The three local incomplete verifier attempts
+remain under `bench/results/2026-08-18T06-38-26-{976,980,993}Z/`.
