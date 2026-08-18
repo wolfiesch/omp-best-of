@@ -296,8 +296,9 @@ function aggregate(outcomes: TaskOutcome[]) {
 async function environment(mode: string, options: BenchOptions) {
 	const sourceHash = (await requireCommand(["git", "rev-parse", "HEAD"], REPO_ROOT)).trim();
 	const dirty = (await requireCommand(["git", "status", "--porcelain=v1"], REPO_ROOT)).trim().length > 0;
-	const ompPath = (await runCommand(["which", "omp"])).stdout.trim();
-	const ompVersion = (await runCommand(["omp", "--version"])).stdout.trim();
+	const ompCommand = process.env.OMP_BEST_OF_OMP_BIN ?? "omp";
+	const ompPath = ompCommand.includes(path.sep) ? ompCommand : (await runCommand(["which", ompCommand])).stdout.trim();
+	const ompVersion = (await runCommand([ompPath || ompCommand, "--version"])).stdout.trim();
 	const ompBinaryHash = ompPath ? (await runCommand(["shasum", "-a", "256", ompPath])).stdout.trim().split(/\s+/)[0] : "";
 	return {
 		mode,
