@@ -51,12 +51,16 @@ async function assertCleanRepo(cwd: string): Promise<{ root: string; head: strin
 }
 
 async function createCandidateIsolation(root: string, id: string): Promise<IsolationHandle> {
-	const isolation = await ensureIsolation(root, id);
+	let isolation: IsolationHandle | undefined;
 	try {
+		isolation = await ensureIsolation(root, id);
 		await requireCommand(["git", "status", "--porcelain=v1", "--untracked-files=all"], isolation.mergedDir);
 		return isolation;
 	} catch {
-		await cleanupIsolation(isolation);
+		if (isolation) await cleanupIsolation(isolation);
+		// Native backends can exist but be unusable in a restricted container, for example
+		// when fuse-overlayfs is installed without mount permission. The copy backend does
+		// not need those privileges and preserves the same candidate-isolation contract.
 		return ensureIsolation(root, id, parseIsolationMode("rcopy"));
 	}
 }
