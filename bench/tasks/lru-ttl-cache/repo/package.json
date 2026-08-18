@@ -1,0 +1,5 @@
+{
+	"name": "bench-lru-ttl-cache",
+	"private": true,
+	"type": "module"
+}

@@ -1,0 +1,5 @@
+{
+	"name": "bench-semver-satisfies",
+	"private": true,
+	"type": "module"
+}
