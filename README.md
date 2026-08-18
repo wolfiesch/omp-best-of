@@ -3,7 +3,7 @@
 [![CI](https://github.com/wolfiesch/omp-best-of/actions/workflows/ci.yml/badge.svg)](https://github.com/wolfiesch/omp-best-of/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Run several OMP-powered isolated candidate agents on the same task in detached git worktrees, rank their complete trajectories with either [LLM-as-a-Verifier](https://github.com/llm-as-a-verifier/llm-as-a-verifier) or an OMP subscription-backed sampled judge, and optionally apply the selected patch.
+Run several OMP-powered candidate agents on the same task in isolated copy-on-write workspaces, rank their complete trajectories with either [LLM-as-a-Verifier](https://github.com/llm-as-a-verifier/llm-as-a-verifier) or an OMP subscription-backed sampled judge, and optionally apply the selected patch.
 
 ```text
 /best-of --n 5 --apply Fix the failing authentication test
@@ -21,7 +21,7 @@ The default logprob backend uses the tournament algorithm from Kwok et al. throu
 flowchart LR
     A[Clean checkout at HEAD] --> B{Preflight}
     B -->|dirty tree| X[Refuse]
-    B -->|clean| C[N detached worktrees]
+    B -->|clean| C[N OMP isolation workspaces]
     C --> D1[Candidate 1]
     C --> D2[Candidate 2]
     C --> D3[Candidate N]
@@ -35,12 +35,12 @@ flowchart LR
 ```
 
 1. **Preflight.** Resolve the repository root, refuse a dirty working tree, and record `HEAD`.
-2. **Fan out.** Create one detached `git worktree` per candidate at that exact commit, under a temporary directory.
-3. **Generate.** Run one headless Oh My Pi session per worktree, concurrently, in JSON event mode with extensions and sessions disabled.
-4. **Collect.** Parse each transcript, stage everything in the worktree, and capture a binary-safe patch against `HEAD`.
+2. **Fan out.** Capture one clean baseline, then create an OMP-managed isolation workspace per candidate. OMP selects the host's best copy-on-write backend and falls back to a Git worktree when needed.
+3. **Generate.** Run one headless Oh My Pi session per isolated workspace, concurrently, in JSON event mode with extensions and sessions disabled.
+4. **Collect.** Parse each transcript and use OMP's baseline-aware delta capture to produce a binary-safe patch.
 5. **Rank.** Use either the upstream continuous-logprob tournament or a seeded sampled pairwise round robin over the eligible trajectories.
 6. **Select.** Apply the winner only when `--apply` is given, and only when the parent `HEAD` and status are still unchanged.
-7. **Clean.** Remove every worktree and prune, whether the run succeeded or failed. Artifacts are always kept.
+7. **Clean.** Tear down every OMP isolation workspace, whether the run succeeded or failed. Artifacts are always kept.
 
 A candidate that exits non-zero, or whose patch cannot be captured, is excluded before ranking. With a single surviving candidate the verifier is skipped and reported as such.
 
@@ -50,7 +50,7 @@ A candidate that exits non-zero, or whose patch cannot be captured, is excluded 
 | --- | --- |
 | Oh My Pi 17 or newer | Provides the extension API, the `omp` binary, and credentials |
 | Bun 1.3 or newer | Runtime for the plugin and its CLI |
-| Git | Worktree isolation and patch application |
+| Git | Repository baseline capture, isolation fallback, and patch application |
 | `uv` | Required only by the logprob backend; runs the pinned `llm-verifier==0.2.0` sidecar |
 | A verifier route in omp | Logprob mode needs a score-capable API endpoint; sampled mode can invoke an OMP subscription model |
 | Clean working tree | Enforced before any candidate starts |
@@ -238,7 +238,7 @@ Losing candidates are kept, so a rejected patch can still be inspected, replayed
 
 ## Safety model
 
-- Each candidate gets a detached worktree at the recorded commit and is instructed not to modify the parent. This prevents repository patch collisions; it is not an OS sandbox or host-isolation boundary.
+- Each candidate gets an OMP-managed isolation workspace from the recorded clean baseline. OMP prefers the host's native copy-on-write backend and falls back to a Git worktree when necessary. This prevents repository patch collisions; it is not an OS sandbox or host-isolation boundary.
 - The run refuses to start from a dirty working tree.
 - Selection is the default. Without `--apply`, patches stay in the artifact directory.
 - Before applying, the parent `HEAD` and status must be byte-identical to preflight, otherwise the run reports that the winner was not applied.
@@ -262,7 +262,7 @@ Layout:
 
 ```text
 src/extension.ts   Oh My Pi command registration, progress widget, result reporting
-src/runner.ts      worktrees, candidate execution, ranking, patch application
+src/runner.ts      OMP isolation, candidate execution, ranking, patch application
 src/model.ts       verifier endpoint and credential resolution through omp's registry
 src/verifier.ts    JSON contract with the Python bridge
 src/transcript.ts  JSON event stream parsing and usage aggregation

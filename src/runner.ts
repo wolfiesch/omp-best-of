@@ -1,6 +1,14 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+	captureBaseline,
+	captureDeltaPatch,
+	cleanupIsolation,
+	ensureIsolation,
+	type IsolationHandle,
+	type WorktreeBaseline,
+} from "@oh-my-pi/pi-coding-agent/task/worktree";
 import { parseJsonTranscript } from "./transcript";
 import { resolveVerifierEndpoint } from "./model";
 import { requireCommand, runCommand } from "./process";
@@ -41,19 +49,10 @@ async function assertCleanRepo(cwd: string): Promise<{ root: string; head: strin
 	return { root, head };
 }
 
-async function createWorktree(root: string, head: string, target: string): Promise<void> {
-	await mkdir(path.dirname(target), { recursive: true });
-	await requireCommand(["git", "worktree", "add", "--detach", target, head], root);
-}
-
-async function capturePatch(worktree: string): Promise<string> {
-	await requireCommand(["git", "add", "-A"], worktree);
-	return requireCommand(["git", "diff", "--cached", "--binary", "--no-ext-diff", "HEAD"], worktree);
-}
-
 async function runCandidate(
 	index: number,
-	worktree: string,
+	workspace: string,
+	baseline: WorktreeBaseline,
 	artifactDir: string,
 	options: BestOfOptions,
 ): Promise<CandidateResult> {
@@ -79,7 +78,7 @@ async function runCandidate(
 	const command = [
 		omp,
 		"--cwd",
-		worktree,
+		workspace,
 		...modelFlags,
 		"--mode",
 		"json",
@@ -94,12 +93,12 @@ async function runCandidate(
 		"-p",
 		prompt,
 	];
-	const processResult = await runCommand(command, { cwd: worktree, timeoutMs: maxTimeMs(options.maxTime) });
+	const processResult = await runCommand(command, { cwd: workspace, timeoutMs: maxTimeMs(options.maxTime) });
 	const parsed = parseJsonTranscript(processResult.stdout);
 	let patch = "";
 	let patchError = "";
 	try {
-		patch = await capturePatch(worktree);
+		patch = (await captureDeltaPatch(workspace, baseline)).rootPatch;
 	} catch (error) {
 		patchError = error instanceof Error ? error.message : String(error);
 	}
@@ -112,7 +111,7 @@ async function runCandidate(
 	]);
 	return {
 		index,
-		worktree,
+		worktree: workspace,
 		exitCode: patchError ? 1 : processResult.exitCode,
 		durationMs: Date.now() - started,
 		transcript: parsed.transcript,
@@ -149,21 +148,23 @@ export function composeSampledVerifierEvidence(candidate: Pick<CandidateResult, 
 	].join("\n\n");
 }
 
-async function applyPatch(root: string, expectedHead: string, patch: string, artifactDir: string): Promise<void> {
+async function assertParentUnchanged(root: string, expectedHead: string, message: string): Promise<void> {
 	const currentHead = (await requireCommand(["git", "rev-parse", "HEAD"], root)).trim();
 	const status = await requireCommand(["git", "status", "--porcelain=v1", "--untracked-files=all"], root);
-	if (currentHead !== expectedHead || status.trim()) {
-		throw new Error("The parent checkout changed while candidates were running; the winner was not applied.");
-	}
+	if (currentHead !== expectedHead || status.trim()) throw new Error(message);
+}
+
+async function applyPatch(root: string, expectedHead: string, patch: string, artifactDir: string): Promise<void> {
+	await assertParentUnchanged(
+		root,
+		expectedHead,
+		"The parent checkout changed while candidates were running; the winner was not applied.",
+	);
 	if (!patch.trim()) return;
 	const patchPath = path.join(artifactDir, "winner.patch");
 	await Bun.write(patchPath, patch);
 	await requireCommand(["git", "apply", "--check", "--binary", patchPath], root);
 	await requireCommand(["git", "apply", "--binary", patchPath], root);
-}
-
-async function removeWorktree(root: string, worktree: string): Promise<void> {
-	await runCommand(["git", "worktree", "remove", "--force", worktree], { cwd: root });
 }
 
 export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
@@ -191,16 +192,29 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Probing sampled verifier" });
 		sampledPreflightUsage = await assertSampledVerifierSupported(options.verifierModel, root);
 	}
-	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-"));
-	const worktrees = Array.from({ length: options.n }, (_, index) => path.join(temporaryRoot, `candidate-${index + 1}`));
+	const baseline = await captureBaseline(root);
+	const isolations: IsolationHandle[] = [];
 
 	try {
-		for (const worktree of worktrees) await createWorktree(root, head, worktree);
+		for (let index = 0; index < options.n; index += 1) {
+			isolations.push(await ensureIsolation(root, `${id}-candidate-${index + 1}`));
+		}
+		await assertParentUnchanged(
+			root,
+			head,
+			"The parent checkout changed while isolated candidates were being prepared; no candidates were started.",
+		);
 		emit(options, { phase: "generating", completedCandidates: 0, totalCandidates: options.n, message: `Running ${options.n} candidates` });
 		let completed = 0;
 		const candidates = await Promise.all(
-			worktrees.map(async (worktree, index) => {
-				const result = await runCandidate(index, worktree, path.join(artifacts, `candidate-${index + 1}`), options);
+			isolations.map(async (isolation, index) => {
+				const result = await runCandidate(
+					index,
+					isolation.mergedDir,
+					baseline,
+					path.join(artifacts, `candidate-${index + 1}`),
+					options,
+				);
 				completed += 1;
 				emit(options, {
 					phase: "generating",
@@ -270,9 +284,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 		await Bun.write(path.join(artifacts, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
 		return result;
 	} finally {
-		emit(options, { phase: "cleaning", completedCandidates: options.n, totalCandidates: options.n, message: "Removing temporary worktrees" });
-		await Promise.all(worktrees.map(worktree => removeWorktree(root, worktree)));
-		await runCommand(["git", "worktree", "prune"], { cwd: root });
-		await rm(temporaryRoot, { recursive: true, force: true });
+		emit(options, { phase: "cleaning", completedCandidates: options.n, totalCandidates: options.n, message: "Removing isolated candidates" });
+		await Promise.all(isolations.map(cleanupIsolation));
 	}
 }

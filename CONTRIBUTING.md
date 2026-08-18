@@ -36,13 +36,13 @@ bun run smoke:verifier
 
 1. `bun run check` passes.
 2. Behavior changes come with a test that fails without the change, or with the exact command output that demonstrates the new behavior.
-3. Anything touching worktree creation, patch capture, or patch application states how the parent checkout stays protected.
+3. Anything touching candidate isolation, patch capture, or patch application states how the parent checkout stays protected.
 4. Performance or cost claims include the command, the scenario, and the raw numbers the run reported. Do not publish estimated or extrapolated figures.
 5. Keep the diff focused. Unrelated formatting or renaming makes review harder.
 
 ## Commit and pull request style
 
-- Conventional commit subjects, imperative mood, lowercase after the type, for example `fix: keep worktrees when patch capture fails`.
+- Conventional commit subjects, imperative mood, lowercase after the type, for example `fix: preserve candidate patches when capture fails`.
 - One logical change per commit where practical.
 - Explain the user visible effect in the pull request body, not just the mechanics.
 

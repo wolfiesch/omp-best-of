@@ -10,7 +10,7 @@
 		"best-of-n",
 		"llm-as-a-verifier",
 		"test-time-scaling",
-		"git-worktree",
+		"copy-on-write",
 		"deepseek"
 	],
 	"homepage": "https://github.com/wolfiesch/omp-best-of#readme",
