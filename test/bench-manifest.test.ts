@@ -7,7 +7,7 @@ import {
 	sanitizeBenchmarkOptions,
 	sha256Canonical,
 } from "../bench/manifest";
-import { projectScorecardVerifier } from "../bench/run";
+import { isDiscriminatingSelectionPool, projectScorecardVerifier } from "../bench/run";
 import type { VerifierResult } from "../src/types";
 
 const REPOSITORY_ROOT = "/Users/benchmark/work/omp-best-of";
@@ -95,6 +95,12 @@ test("never persists absolute home paths in manifest argv or options", () => {
 	const persisted = JSON.stringify(manifest);
 	expect(persisted).not.toContain("/Users/benchmark");
 	expect(manifest.externalWrapperTimeout).toBe("unrecorded");
+});
+
+test("marks only selectable mixed-outcome pools as discriminating", () => {
+	expect(isDiscriminatingSelectionPool(3, 4)).toBe(true);
+	expect(isDiscriminatingSelectionPool(4, 4)).toBe(false);
+	expect(isDiscriminatingSelectionPool(0, 4)).toBe(false);
 });
 
 test("serializes sampled verifier retry attribution without adding it to logprob records", () => {

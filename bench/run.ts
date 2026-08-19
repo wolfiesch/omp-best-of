@@ -271,6 +271,10 @@ async function rankPool(
 	}
 }
 
+export function isDiscriminatingSelectionPool(passedCandidates: number, eligibleCandidates: number): boolean {
+	return passedCandidates > 0 && passedCandidates < eligibleCandidates;
+}
+
 function summarize(pool: TaskPool, eligible: PoolCandidate[], verifier: VerifierResult | null, wallClockMs: number, ranked: boolean): TaskOutcome {
 	const passedCandidates = pool.candidates.filter(candidate => candidate.passed).length;
 	// Without a tournament there is no pick. Falling back to the first candidate would
@@ -287,7 +291,7 @@ function summarize(pool: TaskPool, eligible: PoolCandidate[], verifier: Verifier
 		oraclePass: passedCandidates > 0,
 		verifierIndex: selected ? selected.index : null,
 		verifierPass: selected ? selected.passed : null,
-		discriminating: passedCandidates > 0 && passedCandidates < pool.candidates.length,
+		discriminating: isDiscriminatingSelectionPool(passedCandidates, eligible.length),
 		// Near-zero separation means every pairwise comparison tied, so the pick carries no information.
 		scoreSpread: verifier ? Math.max(...verifier.scores) - Math.min(...verifier.scores) : 0,
 		generationUsd: pool.candidates.reduce((sum, candidate) => sum + candidate.usage.costUsd, 0),
