@@ -7,6 +7,8 @@ import {
 	sanitizeBenchmarkOptions,
 	sha256Canonical,
 } from "../bench/manifest";
+import { projectScorecardVerifier } from "../bench/run";
+import type { VerifierResult } from "../src/types";
 
 const REPOSITORY_ROOT = "/Users/benchmark/work/omp-best-of";
 
@@ -93,4 +95,53 @@ test("never persists absolute home paths in manifest argv or options", () => {
 	const persisted = JSON.stringify(manifest);
 	expect(persisted).not.toContain("/Users/benchmark");
 	expect(manifest.externalWrapperTimeout).toBe("unrecorded");
+});
+
+test("serializes sampled verifier retry attribution without adding it to logprob records", () => {
+	const auditAttempts = {
+		totalAttempts: 5,
+		acceptedAttempts: 4,
+		discardedAttempts: 1,
+		errorAttempts: 1,
+		providerRequests: 12,
+		byCandidateRound: { "0|0": 2, "0|1": 1, "1|0": 1, "1|1": 1 },
+	};
+	const sampledVerifier: VerifierResult = {
+		backend: "sampled",
+		index: 1,
+		scores: [0.25, 0.75],
+		ranking: [1, 0],
+		nComparisons: 2,
+		criteria: ["correctness"],
+		usage: {
+			calls: 5,
+			input_tokens: 10,
+			cached_input_tokens: 2,
+			uncached_input_tokens: 8,
+			output_tokens: 4,
+			reasoning_tokens: 1,
+			cache_hit_rate: 0.2,
+			reported_cost_usd: 0.01,
+		},
+		auditAttempts,
+	};
+	const logprobVerifier: VerifierResult = {
+		...sampledVerifier,
+		backend: "logprob",
+	};
+	delete logprobVerifier.auditAttempts;
+
+	expect(JSON.stringify(projectScorecardVerifier(sampledVerifier))).toBe(
+		JSON.stringify({
+			backend: sampledVerifier.backend,
+			index: sampledVerifier.index,
+			scores: sampledVerifier.scores,
+			ranking: sampledVerifier.ranking,
+			nComparisons: sampledVerifier.nComparisons,
+			criteria: sampledVerifier.criteria,
+			usage: sampledVerifier.usage,
+			auditAttempts,
+		}),
+	);
+	expect(projectScorecardVerifier(logprobVerifier)).not.toHaveProperty("auditAttempts");
 });

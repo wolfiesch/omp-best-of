@@ -396,6 +396,20 @@ function generatorFacts(generation: TaskPool["generatedBy"][]) {
 	};
 }
 
+export function projectScorecardVerifier(verifier: VerifierResult | null) {
+	if (!verifier) return null;
+	return {
+		backend: verifier.backend,
+		index: verifier.index,
+		scores: verifier.scores,
+		ranking: verifier.ranking,
+		nComparisons: verifier.nComparisons,
+		criteria: verifier.criteria,
+		usage: verifier.usage,
+		...(verifier.auditAttempts === undefined ? {} : { auditAttempts: verifier.auditAttempts }),
+	};
+}
+
 function markdown(scorecard: Record<string, unknown>, outcomes: TaskOutcome[], summary: ReturnType<typeof aggregate>): string {
 	const env = scorecard.environment as Awaited<ReturnType<typeof environment>>;
 	const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
@@ -656,17 +670,7 @@ async function main(): Promise<void> {
 			summary,
 			tasks: outcomes.map(({ verifier, ...rest }) => ({
 				...rest,
-				verifier: verifier
-					? {
-							backend: verifier.backend,
-							index: verifier.index,
-							scores: verifier.scores,
-							ranking: verifier.ranking,
-							nComparisons: verifier.nComparisons,
-							criteria: verifier.criteria,
-							usage: verifier.usage,
-						}
-					: null,
+				verifier: projectScorecardVerifier(verifier),
 			})),
 			artifacts: {
 				manifest: `bench/results/${runId}/manifest.json`,
@@ -686,7 +690,9 @@ async function main(): Promise<void> {
 	}
 }
 
-main().catch(error => {
-	process.stderr.write(`\nBenchmark failed: ${error instanceof Error ? error.message : String(error)}\n`);
-	process.exitCode = 1;
-});
+if (import.meta.main) {
+	main().catch(error => {
+		process.stderr.write(`\nBenchmark failed: ${error instanceof Error ? error.message : String(error)}\n`);
+		process.exitCode = 1;
+	});
+}
