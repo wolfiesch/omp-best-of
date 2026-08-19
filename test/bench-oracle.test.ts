@@ -78,7 +78,7 @@ test("labels a partial fix as failing", async () => {
 }, 15_000);
 
 test("labels a candidate that prevents JUnit output as failing", async () => {
-	const patch = await patchFor([{ file: "intervals.js", content: "export function mergeIntervals( {\n" }]);
+	const patch = await patchFor([{ file: "intervals.js", content: "process.exit(1);\nexport function mergeIntervals() {}\n" }]);
 	const label = await scoreCandidate(taskDir, repoDir, patch);
 	expect(label.passed).toBe(false);
 	expect(label.detail.length).toBeGreaterThan(0);
