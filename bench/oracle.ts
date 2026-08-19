@@ -30,9 +30,10 @@ async function countTests(files: string[]): Promise<number> {
 	return total;
 }
 
-async function countReportedTests(reportPath: string): Promise<number> {
-	const report = await Bun.file(reportPath).text();
-	return report.match(/<testcase(?:\s|>)/g)?.length ?? 0;
+async function countReportedTests(reportPath: string): Promise<number | null> {
+	const report = Bun.file(reportPath);
+	if (!(await report.exists())) return null;
+	return (await report.text()).match(/<testcase(?:\s|>)/g)?.length ?? 0;
 }
 
 export async function visibleTestFiles(taskDir: string): Promise<string[]> {
@@ -113,17 +114,23 @@ export async function scoreCandidate(taskDir: string, repoDir: string, patch: st
 			timeoutMs: ORACLE_TIMEOUT_MS,
 		});
 		const output = `${result.stdout}\n${result.stderr}`.trim();
-		const ran = await countReportedTests(reportPath);
-		// A silently skipped oracle file would label every candidate as passing, so refuse to guess.
-		if (ran < expected) {
-			throw new Error(`Oracle for ${path.basename(taskDir)} ran ${ran} of ${expected} tests; refusing to label. Output:\n${output.slice(0, 800)}`);
-		}
 		const detail = output
 			.split("\n")
 			.filter(line => /\d+ (pass|fail)|error:/i.test(line))
 			.slice(-4)
 			.join(" | ")
 			.trim();
+		const ran = await countReportedTests(reportPath);
+		if (ran === null) {
+			if (result.exitCode === 0 || !output) {
+				throw new Error(`Oracle for ${path.basename(taskDir)} produced no JUnit report; refusing to label.`);
+			}
+			return { passed: false, detail: (detail || output.split("\n").slice(-2).join(" | ")).slice(0, 400) };
+		}
+		// A silently skipped oracle file would label every candidate as passing, so refuse to guess.
+		if (ran < expected) {
+			throw new Error(`Oracle for ${path.basename(taskDir)} ran ${ran} of ${expected} tests; refusing to label. Output:\n${output.slice(0, 800)}`);
+		}
 		return { passed: result.exitCode === 0, detail: (detail || output.split("\n").slice(-2).join(" | ")).slice(0, 400) };
 	} finally {
 		await rm(scoringRoot, { recursive: true, force: true });
@@ -134,7 +141,10 @@ export async function scoreCandidate(taskDir: string, repoDir: string, patch: st
 export async function rescoreCandidates(taskDir: string, patches: string[], visibleTests = true): Promise<OracleLabel[]> {
 	const repoDir = await prepareTaskRepo(taskDir, visibleTests);
 	try {
-		return await Promise.all(patches.map(patch => scoreCandidate(taskDir, repoDir, patch)));
+		const labels: OracleLabel[] = [];
+		// Bun can omit JUnit output when several scoring subprocesses start together on a constrained host.
+		for (const patch of patches) labels.push(await scoreCandidate(taskDir, repoDir, patch));
+		return labels;
 	} finally {
 		await rm(repoDir, { recursive: true, force: true });
 	}

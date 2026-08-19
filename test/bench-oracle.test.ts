@@ -77,6 +77,13 @@ test("labels a partial fix as failing", async () => {
 	expect(label.passed).toBe(false);
 }, 15_000);
 
+test("labels a candidate that prevents JUnit output as failing", async () => {
+	const patch = await patchFor([{ file: "intervals.js", content: "export function mergeIntervals( {\n" }]);
+	const label = await scoreCandidate(taskDir, repoDir, patch);
+	expect(label.passed).toBe(false);
+	expect(label.detail.length).toBeGreaterThan(0);
+}, 15_000);
+
 test("rescoring refreshes every stored patch against the current oracle", async () => {
 	const correct = await patchFor([{ file: "intervals.js", content: CORRECT }]);
 	const partial = await patchFor([{ file: "intervals.js", content: PARTIAL }]);
