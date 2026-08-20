@@ -11,6 +11,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Retry attribution for candidate audits. Every audit attempt is recorded before the next attempt starts with its candidate, round, ordinal, status of accepted, insufficient probes, or error, required and observed probe counts, usage, and a bounded sanitized error message, and the result reports total, accepted, discarded, and error attempts, provider requests, and per-candidate and per-round attempt counts. Audit attempts stay distinct from the underlying provider requests, and discarded under-probed attempts and errors are counted separately from accepted ones. Selection and ranking are unchanged.
 - `--verifier-timeout` independently controls the per-call verifier deadline for both backends, including the child OMP deadline used by sampled audits and pairwise judgments.
 
+### Fixed
+
+- Sampled verifier JSON parsing now uses only assistant text parts while retaining thinking and tool parts in transcript evidence, so reasoning containing braces cannot corrupt an otherwise valid judgment.
+
 ### Changed
 
 - The sampled cache schema is now version 3 so it can carry per-attempt audit records. A cache file written by an older schema is rejected cleanly and recomputed rather than misread.

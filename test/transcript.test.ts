@@ -48,4 +48,21 @@ describe("JSON event transcript", () => {
 			costUsd: 0.012,
 		});
 	});
+
+	test("keeps thinking in evidence but excludes it from the final response", () => {
+		const json = '{"probabilityPass":98,"findings":[],"summary":"checked"}';
+		const events = JSON.stringify({
+			type: "message_end",
+			message: {
+				role: "assistant",
+				content: [
+					{ type: "thinking", thinking: "First inspect {candidate} before answering." },
+					{ type: "text", text: json },
+				],
+			},
+		});
+		const parsed = parseJsonTranscript(events);
+		expect(parsed.transcript).toContain("[thinking]\nFirst inspect {candidate} before answering.");
+		expect(parsed.finalResponse).toBe(json);
+	});
 });
