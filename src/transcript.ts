@@ -32,6 +32,18 @@ function contentText(content: unknown): string {
 		.filter(Boolean)
 		.join("\n");
 }
+function assistantResponseText(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.map((part) => {
+			if (!part || typeof part !== "object") return "";
+			const text = (part as Record<string, unknown>).text;
+			return typeof text === "string" ? text : "";
+		})
+		.filter(Boolean)
+		.join("\n");
+}
 
 function numberAt(value: unknown, key: string): number {
 	if (!value || typeof value !== "object") return 0;
@@ -69,7 +81,10 @@ export function parseJsonTranscript(stdout: string): ParsedTranscript {
 			recordedToolEvidence.push(`## toolResult\n${text}`);
 		}
 		if (text) sections.push(`## ${role}\n${text}`);
-		if (role === "assistant" && text) finalResponse = text;
+		if (role === "assistant") {
+			const response = assistantResponseText(message.content);
+			if (response) finalResponse = response;
+		}
 
 		if (message.usage && typeof message.usage === "object") {
 			const messageUsage = message.usage as Record<string, unknown>;

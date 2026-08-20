@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Sampled judgments now reuse a persistent, resumable cache keyed by exact inputs under `best-of/cache/sampled/` in the Oh My Pi agent directory instead of a per-run file. The cache directory uses mode `0700` and cache files use `0600`, reuse is local to the invoking user rather than provider-global, a change to the repository `HEAD`, task, criteria, candidate evidence, model, thinking level, evaluation count, seed, prompt and settings identity, or audit tool availability resolves a different entry, and no absolute cache path is recorded in public result metadata.
 - Retry attribution for candidate audits. Every audit attempt is recorded before the next attempt starts with its candidate, round, ordinal, status of accepted, insufficient probes, or error, required and observed probe counts, usage, and a bounded sanitized error message, and the result reports total, accepted, discarded, and error attempts, provider requests, and per-candidate and per-round attempt counts. Audit attempts stay distinct from the underlying provider requests, and discarded under-probed attempts and errors are counted separately from accepted ones. Selection and ranking are unchanged.
 
+### Fixed
+
+- Sampled verifier JSON parsing now uses only assistant text parts while retaining thinking and tool parts in transcript evidence, so reasoning containing braces cannot corrupt an otherwise valid judgment.
+
 ### Changed
 
 - The sampled cache schema is now version 3 so it can carry per-attempt audit records. A cache file written by an older schema is rejected cleanly and recomputed rather than misread.
