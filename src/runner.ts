@@ -231,6 +231,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 	const candidateTimeoutMs = validateOptions(options);
 	const verifierTimeout = options.verifierTimeout ?? "2m";
 	const verifierTimeoutMs = parseDurationMs(verifierTimeout, "verifier timeout");
+	if (verifierTimeoutMs < 1) throw new Error("Verifier timeout must be greater than zero");
 	options.signal?.throwIfAborted();
 	const started = Date.now();
 	const id = runId();
@@ -252,12 +253,12 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 			totalCandidates: options.n,
 			message: "Probing verifier scoring capability",
 		});
-		await assertScoringSupported(endpoint, options.signal);
+		await assertScoringSupported(endpoint, options.signal, verifierTimeoutMs);
 	} else if (options.verify && options.verifierBackend === "sampled") {
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Checking sampled audit sandbox" });
 		await assertAuditSandboxSupported(root, options.signal);
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Probing sampled verifier" });
-		sampledPreflightUsage = await assertSampledVerifierSupported(options.verifierModel, root, options.signal);
+		sampledPreflightUsage = await assertSampledVerifierSupported(options.verifierModel, root, options.signal, verifierTimeout);
 	}
 	const baseline = await captureBaseline(root);
 	const isolations: IsolationHandle[] = [];

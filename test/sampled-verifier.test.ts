@@ -5,6 +5,7 @@ import path from "node:path";
 import { composeSampledVerifierEvidence, extractRecordedToolEvidence } from "../src/runner";
 import {
 	aggregatePairwiseJudgments,
+	assertSampledVerifierSupported,
 	buildCandidateAuditPrompt,
 	buildPairSchedule,
 	buildPairwisePrompt,
@@ -217,6 +218,37 @@ console.log(JSON.stringify({
 		expect(pairs).toHaveLength(1);
 		expect(pairs[0]).toMatchObject({ cwd: root, tools: "", noTools: true });
 	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("applies the configured timeout to the sampled verifier preflight", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-preflight-timeout-test-"));
+	const omp = path.join(root, "mock-omp.ts");
+	const log = path.join(root, "call.json");
+	const previousOmpBin = process.env.OMP_BEST_OF_OMP_BIN;
+	try {
+		await Bun.write(
+			omp,
+			`#!/usr/bin/env bun
+await Bun.write(${JSON.stringify(log)}, JSON.stringify({ maxTime: process.argv[process.argv.indexOf("--max-time") + 1] }));
+console.log(JSON.stringify({
+  type: "message_end",
+  message: {
+    role: "assistant",
+    content: [{ type: "text", text: JSON.stringify({ probabilityA: 100, reason: "A adds." }) }],
+    usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } },
+  },
+}));
+`,
+		);
+		await chmod(omp, 0o755);
+		process.env.OMP_BEST_OF_OMP_BIN = omp;
+		await assertSampledVerifierSupported("test/model", root, undefined, "10m");
+		expect(await Bun.file(log).json()).toEqual({ maxTime: "10m" });
+	} finally {
+		if (previousOmpBin === undefined) delete process.env.OMP_BEST_OF_OMP_BIN;
+		else process.env.OMP_BEST_OF_OMP_BIN = previousOmpBin;
 		await rm(root, { recursive: true, force: true });
 	}
 });

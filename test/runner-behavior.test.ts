@@ -93,6 +93,9 @@ test("validates programmatic options before repository or verifier preflight", a
 	await expect(runBestOf({ ...options("/does/not-exist"), verifierTimeout: "nonsense" })).rejects.toThrow(
 		"Invalid verifier timeout: nonsense",
 	);
+	await expect(runBestOf({ ...options("/does/not-exist"), verifierTimeout: "0s" })).rejects.toThrow(
+		"Verifier timeout must be greater than zero",
+	);
 	await expect(runBestOf({ ...options("/does/not-exist"), nEvaluations: Number.POSITIVE_INFINITY })).rejects.toThrow(
 		"Verifier evaluations must be a positive safe integer",
 	);

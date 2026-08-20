@@ -552,13 +552,19 @@ export function sampledVerifierUsage(usages: UsageSummary[]): VerifierUsage {
 	return total;
 }
 
-export async function assertSampledVerifierSupported(model: string, cwd?: string, signal?: AbortSignal): Promise<UsageSummary> {
+export async function assertSampledVerifierSupported(
+	model: string,
+	cwd?: string,
+	signal?: AbortSignal,
+	timeout?: string,
+): Promise<UsageSummary> {
 	const result = await judgePair(
 		{
 			problem: "Return the arithmetic sum.",
 			candidates: ["function add(a, b) { return a + b; }", "function add(a, b) { return a - b; }"],
 			criteria: { Correctness: "Does the function return the arithmetic sum?" },
 			model,
+			timeout,
 			nEvaluations: 1,
 			seed: 0,
 			cachePath: "",

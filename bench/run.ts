@@ -168,10 +168,12 @@ function parseArgs(argv: string[]): BenchOptions {
 				options.verifierThinking = argv[++index] ?? "";
 				if (!options.verifierThinking) throw new Error("--verifier-thinking requires a value");
 				break;
-			case "--verifier-timeout":
+			case "--verifier-timeout": {
 				options.verifierTimeout = argv[++index] ?? "";
-				parseDurationMs(options.verifierTimeout, "verifier timeout");
+				const timeoutMs = parseDurationMs(options.verifierTimeout, "verifier timeout");
+				if (timeoutMs < 1) throw new Error("Verifier timeout must be greater than zero");
 				break;
+			}
 			case "--evaluations":
 				options.nEvaluations = integer(argv[++index], "--evaluations");
 				break;
