@@ -7,6 +7,7 @@ export interface BestOfCliOptions {
 	verifierModel: string;
 	verifierBackend: VerifierBackend;
 	verifierThinking: string;
+	verifierTimeout: string;
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
@@ -34,6 +35,7 @@ Options:
   --verifier-model <model>  Verifier model selector (default: deepseek/deepseek-v4-flash)
   --verifier-backend <mode> logprob or sampled (default: logprob)
   --verifier-thinking <level> Sampled-verifier thinking level (default: low)
+  --verifier-timeout <duration> Per-verifier-call limit, such as 2m or 10m (default: 2m)
   --evaluations <n>         Logprob repetitions or sampled pairwise rounds (default: 1)
   --pivots <n>              Probabilistic pivots for the logprob backend (default: 2)
   --max-time <duration>     Per-candidate limit, such as 20m (default: 20m)
@@ -95,13 +97,13 @@ function integer(value: string, flag: string): number {
 	return parsed;
 }
 
-export function parseDurationMs(value: string): number {
+export function parseDurationMs(value: string, label = "max time"): number {
 	const match = /^(\d+)(s|m|h)?$/.exec(value.trim());
-	if (!match) throw new Error(`Invalid max time: ${value}`);
+	if (!match) throw new Error(`Invalid ${label}: ${value}`);
 	const amount = Number(match[1]);
 	const multiplier = match[2] === "h" ? 3_600_000 : match[2] === "m" ? 60_000 : 1_000;
 	const duration = amount * multiplier;
-	if (!Number.isSafeInteger(duration)) throw new Error(`Invalid max time: ${value}`);
+	if (!Number.isSafeInteger(duration)) throw new Error(`Invalid ${label}: ${value}`);
 	return duration;
 }
 
@@ -113,6 +115,7 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 		verifierModel: "deepseek/deepseek-v4-flash",
 		verifierBackend: "logprob",
 		verifierThinking: "low",
+		verifierTimeout: "2m",
 		nEvaluations: 1,
 		pivots: 2,
 		maxTime: "20m",
@@ -168,6 +171,11 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 				options.verifierThinking = requiredValue(args, index, arg);
 				index += 1;
 				break;
+			case "--verifier-timeout":
+				options.verifierTimeout = requiredValue(args, index, arg);
+				parseDurationMs(options.verifierTimeout, "verifier timeout");
+				index += 1;
+				break;
 			case "--evaluations":
 				options.nEvaluations = integer(requiredValue(args, index, arg), arg);
 				index += 1;
@@ -197,5 +205,6 @@ export function parseArgs(args: string[]): BestOfCliOptions {
 	if (!options.task) throw new Error(`A task is required.\n\n${HELP}`);
 	if (!options.verifierModel) throw new Error("--verifier-model requires a value");
 	if (!options.maxTime) throw new Error("--max-time requires a value");
+	if (!options.verifierTimeout) throw new Error("--verifier-timeout requires a value");
 	return options;
 }

@@ -5,6 +5,7 @@ import path from "node:path";
 import { composeSampledVerifierEvidence, extractRecordedToolEvidence } from "../src/runner";
 import {
 	aggregatePairwiseJudgments,
+	assertSampledVerifierSupported,
 	buildCandidateAuditPrompt,
 	buildPairSchedule,
 	buildPairwisePrompt,
@@ -173,7 +174,7 @@ const prompt = process.argv.at(-1);
 const cwd = process.argv[process.argv.indexOf("--cwd") + 1];
 const audit = prompt.includes("Audit one candidate independently");
 const toolsIndex = process.argv.indexOf("--tools");
-await appendFile(${JSON.stringify(log)}, JSON.stringify({ cwd, audit, tools: toolsIndex >= 0 ? process.argv[toolsIndex + 1] : "", noTools: process.argv.includes("--no-tools") }) + "\\n");
+await appendFile(${JSON.stringify(log)}, JSON.stringify({ cwd, audit, tools: toolsIndex >= 0 ? process.argv[toolsIndex + 1] : "", noTools: process.argv.includes("--no-tools"), maxTime: process.argv[process.argv.indexOf("--max-time") + 1] }) + "\\n");
 if (audit) {
   const probeCount = prompt.includes("This is the challenge pass") ? 3 : 1;
   for (let index = 0; index < probeCount; index += 1) {
@@ -197,6 +198,7 @@ console.log(JSON.stringify({
 			candidateCwds: [candidateA, candidateB],
 			criteria: { Correctness: "Works" },
 			model: "test/model",
+			timeout: "10m",
 			nEvaluations: 1,
 			seed: 0,
 			cachePath: path.join(root, "cache.json"),
@@ -207,6 +209,7 @@ console.log(JSON.stringify({
 			.trim()
 			.split("\n")
 			.map((line) => JSON.parse(line));
+		expect(calls.every((call) => call.maxTime === "10m")).toBe(true);
 		const audits = calls.filter((call) => call.audit);
 		expect(audits).toHaveLength(4);
 		expect(audits.every((call) => call.tools === "audit_probe" && !call.noTools)).toBe(true);
@@ -215,6 +218,37 @@ console.log(JSON.stringify({
 		expect(pairs).toHaveLength(1);
 		expect(pairs[0]).toMatchObject({ cwd: root, tools: "", noTools: true });
 	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("applies the configured timeout to the sampled verifier preflight", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-preflight-timeout-test-"));
+	const omp = path.join(root, "mock-omp.ts");
+	const log = path.join(root, "call.json");
+	const previousOmpBin = process.env.OMP_BEST_OF_OMP_BIN;
+	try {
+		await Bun.write(
+			omp,
+			`#!/usr/bin/env bun
+await Bun.write(${JSON.stringify(log)}, JSON.stringify({ maxTime: process.argv[process.argv.indexOf("--max-time") + 1] }));
+console.log(JSON.stringify({
+  type: "message_end",
+  message: {
+    role: "assistant",
+    content: [{ type: "text", text: JSON.stringify({ probabilityA: 100, reason: "A adds." }) }],
+    usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } },
+  },
+}));
+`,
+		);
+		await chmod(omp, 0o755);
+		process.env.OMP_BEST_OF_OMP_BIN = omp;
+		await assertSampledVerifierSupported("test/model", root, undefined, "10m");
+		expect(await Bun.file(log).json()).toEqual({ maxTime: "10m" });
+	} finally {
+		if (previousOmpBin === undefined) delete process.env.OMP_BEST_OF_OMP_BIN;
+		else process.env.OMP_BEST_OF_OMP_BIN = previousOmpBin;
 		await rm(root, { recursive: true, force: true });
 	}
 });

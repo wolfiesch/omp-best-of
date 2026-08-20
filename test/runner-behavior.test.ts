@@ -33,6 +33,7 @@ function options(repo: string) {
 		verifierModel: "test/model",
 		verifierBackend: "sampled" as const,
 		verifierThinking: "low",
+		verifierTimeout: "2m",
 		nEvaluations: 1,
 		pivots: 1,
 		maxTime: "10s",
@@ -89,6 +90,12 @@ const linuxTest = process.platform === "linux" ? test : test.skip;
 
 test("validates programmatic options before repository or verifier preflight", async () => {
 	await expect(runBestOf({ ...options("/does/not-exist"), maxTime: "nonsense" })).rejects.toThrow("Invalid max time: nonsense");
+	await expect(runBestOf({ ...options("/does/not-exist"), verifierTimeout: "nonsense" })).rejects.toThrow(
+		"Invalid verifier timeout: nonsense",
+	);
+	await expect(runBestOf({ ...options("/does/not-exist"), verifierTimeout: "0s" })).rejects.toThrow(
+		"Verifier timeout must be greater than zero",
+	);
 	await expect(runBestOf({ ...options("/does/not-exist"), nEvaluations: Number.POSITIVE_INFINITY })).rejects.toThrow(
 		"Verifier evaluations must be a positive safe integer",
 	);

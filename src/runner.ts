@@ -21,7 +21,6 @@ import { assertScoringSupported, verifyCandidates } from "./verifier";
 import { prepareSharedSampledVerifierCache, type SharedSampledVerifierCache } from "./verifier-cache";
 
 const DEFAULT_AGENT_PROMPT = `Work independently on the task below. Modify the repository directly, run focused validation, and finish only when the requested behavior works. Do not commit changes. Preserve unrelated user work.\n\n`;
-const VERIFIER_TIMEOUT_MS = 120_000;
 
 function emit(options: BestOfOptions, progress: BestOfProgress): void {
 	options.onProgress?.(progress);
@@ -230,6 +229,9 @@ async function applyPatch(root: string, expectedHead: string, patch: string, art
 
 export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 	const candidateTimeoutMs = validateOptions(options);
+	const verifierTimeout = options.verifierTimeout ?? "2m";
+	const verifierTimeoutMs = parseDurationMs(verifierTimeout, "verifier timeout");
+	if (verifierTimeoutMs < 1) throw new Error("Verifier timeout must be greater than zero");
 	options.signal?.throwIfAborted();
 	const started = Date.now();
 	const id = runId();
@@ -251,12 +253,12 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 			totalCandidates: options.n,
 			message: "Probing verifier scoring capability",
 		});
-		await assertScoringSupported(endpoint, options.signal);
+		await assertScoringSupported(endpoint, options.signal, verifierTimeoutMs);
 	} else if (options.verify && options.verifierBackend === "sampled") {
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Checking sampled audit sandbox" });
 		await assertAuditSandboxSupported(root, options.signal);
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Probing sampled verifier" });
-		sampledPreflightUsage = await assertSampledVerifierSupported(options.verifierModel, root, options.signal);
+		sampledPreflightUsage = await assertSampledVerifierSupported(options.verifierModel, root, options.signal, verifierTimeout);
 	}
 	const baseline = await captureBaseline(root);
 	const isolations: IsolationHandle[] = [];
@@ -337,7 +339,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 				nEvaluations: options.nEvaluations,
 				seed: options.seed,
 				signal: options.signal,
-				timeoutMs: VERIFIER_TIMEOUT_MS,
+				timeoutMs: verifierTimeoutMs,
 			};
 			try {
 				if (options.verifierBackend === "sampled") {
@@ -360,6 +362,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 						candidates,
 						model: options.verifierModel,
 						thinking: options.verifierThinking,
+						timeout: verifierTimeout,
 						cachePath: cache.path,
 						preflightUsage: sampledPreflightUsage,
 						cwd: root,

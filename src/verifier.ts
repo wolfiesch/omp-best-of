@@ -51,9 +51,9 @@ async function runBridge(
  * generated. Skipped for an endpoint on upstream's native score-tag path, which
  * needs no grammar support; one token of output otherwise.
  */
-export async function assertScoringSupported(endpoint: VerifierEndpoint, signal?: AbortSignal): Promise<void> {
+export async function assertScoringSupported(endpoint: VerifierEndpoint, signal?: AbortSignal, timeoutMs = 60_000): Promise<void> {
 	if (endpoint.nativeScoreTags) {
-		const stdout = await runBridge(endpoint, { model: endpoint.model }, ["--probe-native"], signal, 60_000);
+		const stdout = await runBridge(endpoint, { model: endpoint.model }, ["--probe-native"], signal, timeoutMs);
 		let result: unknown;
 		try {
 			result = JSON.parse(stdout);
@@ -63,7 +63,7 @@ export async function assertScoringSupported(endpoint: VerifierEndpoint, signal?
 		if (isRecord(result) && result.ok === true) return;
 		throw new Error(`Native verifier probe failed: ${stdout.slice(0, 500)}`);
 	}
-	const stdout = await runBridge(endpoint, { model: endpoint.model }, ["--probe"], signal, 60_000);
+	const stdout = await runBridge(endpoint, { model: endpoint.model }, ["--probe"], signal, timeoutMs);
 	let sample: ScoringProbeSample;
 	try {
 		sample = JSON.parse(stdout) as ScoringProbeSample;

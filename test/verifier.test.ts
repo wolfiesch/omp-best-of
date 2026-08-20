@@ -94,3 +94,36 @@ test("probes the native verifier transport instead of assuming it works", async 
 		await rm(temporaryRoot, { recursive: true, force: true });
 	}
 });
+
+test("applies the configured timeout to the scoring capability probe", async () => {
+	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-native-probe-timeout-"));
+	const bridge = path.join(temporaryRoot, "bridge.ts");
+	const previousPython = process.env.OMP_BEST_OF_PYTHON;
+	const previousBridge = process.env.OMP_BEST_OF_VERIFIER_BRIDGE;
+	try {
+		// This crosses a subprocess boundary, so fake timers cannot drive the platform timeout.
+		await Bun.write(bridge, "#!/usr/bin/env bun\nawait Bun.sleep(500);\nconsole.log(JSON.stringify({ ok: true }));\n");
+		await chmod(bridge, 0o755);
+		process.env.OMP_BEST_OF_PYTHON = process.execPath;
+		process.env.OMP_BEST_OF_VERIFIER_BRIDGE = bridge;
+		await expect(
+			assertScoringSupported(
+				{
+					provider: "deepseek",
+					model: "test",
+					baseUrl: "https://api.deepseek.com",
+					apiKey: "test",
+					nativeScoreTags: true,
+				},
+				undefined,
+				25,
+			),
+		).rejects.toThrow("Verifier timed out");
+	} finally {
+		if (previousPython === undefined) delete process.env.OMP_BEST_OF_PYTHON;
+		else process.env.OMP_BEST_OF_PYTHON = previousPython;
+		if (previousBridge === undefined) delete process.env.OMP_BEST_OF_VERIFIER_BRIDGE;
+		else process.env.OMP_BEST_OF_VERIFIER_BRIDGE = previousBridge;
+		await rm(temporaryRoot, { recursive: true, force: true });
+	}
+});

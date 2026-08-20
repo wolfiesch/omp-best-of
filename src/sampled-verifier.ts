@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { parseDurationMs } from "./args";
 import { writePrivateFile } from "./artifacts";
 import { runCommand } from "./process";
 import { parseJsonTranscript } from "./transcript";
@@ -18,6 +19,7 @@ export interface SampledVerifierInput {
 	criteria: Record<string, string>;
 	model: string;
 	thinking?: string;
+	timeout?: string;
 	nEvaluations: number;
 	seed: number;
 	cachePath: string;
@@ -251,6 +253,8 @@ async function invokeJudge(
 ): Promise<JudgeInvocation> {
 	const omp = input.ompBin ?? process.env.OMP_BEST_OF_OMP_BIN ?? "omp";
 	const cwd = options.cwd ?? input.cwd ?? process.cwd();
+	const timeout = input.timeout ?? SAMPLED_VERIFIER_SETTINGS.timeout;
+	const timeoutMs = parseDurationMs(timeout, "verifier timeout");
 	const toolFlags = options.tools
 		? ["--extension", path.join(import.meta.dir, "audit-probe-extension.ts"), "--tools", "audit_probe", "--approval-mode", "yolo"]
 		: ["--no-tools"];
@@ -270,11 +274,11 @@ async function invokeJudge(
 			"--thinking",
 			input.thinking || SAMPLED_VERIFIER_SETTINGS.thinking,
 			"--max-time",
-			SAMPLED_VERIFIER_SETTINGS.timeout,
+			timeout,
 			"-p",
 			prompt,
 		],
-		{ cwd, timeoutMs: SAMPLED_VERIFIER_SETTINGS.timeoutMs, signal: input.signal },
+		{ cwd, timeoutMs, signal: input.signal },
 	);
 	if (result.timedOut) throw new Error("Sampled verifier timed out");
 	if (result.aborted) throw input.signal?.reason ?? new DOMException("Sampled verifier aborted", "AbortError");
@@ -548,13 +552,19 @@ export function sampledVerifierUsage(usages: UsageSummary[]): VerifierUsage {
 	return total;
 }
 
-export async function assertSampledVerifierSupported(model: string, cwd?: string, signal?: AbortSignal): Promise<UsageSummary> {
+export async function assertSampledVerifierSupported(
+	model: string,
+	cwd?: string,
+	signal?: AbortSignal,
+	timeout?: string,
+): Promise<UsageSummary> {
 	const result = await judgePair(
 		{
 			problem: "Return the arithmetic sum.",
 			candidates: ["function add(a, b) { return a + b; }", "function add(a, b) { return a - b; }"],
 			criteria: { Correctness: "Does the function return the arithmetic sum?" },
 			model,
+			timeout,
 			nEvaluations: 1,
 			seed: 0,
 			cachePath: "",

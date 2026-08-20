@@ -138,6 +138,7 @@ The standalone form writes progress to stderr and a JSON summary to stdout. `sel
 | `--model <provider/model>` | session model | Candidate model; every model slot in the child agent is pinned to it |
 | `--verifier-model <model>` | `deepseek/deepseek-v4-flash` | Verifier model selector; an API-scoring model for `logprob`, or an OMP model for `sampled` |
 | `--verifier-backend <mode>` | `logprob` | `logprob` for upstream LLM-as-a-Verifier or `sampled` for an OMP-backed pairwise judge |
+| `--verifier-timeout <duration>` | `2m` | Per-verifier-call wall-clock limit for either backend; raise it for slower sampled judges |
 | `--evaluations <n>` | `1` | Repeated logprob evaluations or complete sampled pairwise rounds |
 | `--pivots <n>` | `2` | Pivots in the logprob tournament; ignored by sampled mode |
 | `--max-time <duration>` | `20m` | Per-candidate wall-clock limit, such as `90s`, `20m`, `2h` |

@@ -59,6 +59,7 @@ console.log(JSON.stringify({
 			verifierModel: "unused",
 			verifierBackend: "logprob",
 			verifierThinking: "low",
+			verifierTimeout: "2m",
 			nEvaluations: 1,
 			pivots: 1,
 			maxTime: "10s",
