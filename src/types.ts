@@ -12,6 +12,8 @@ export interface BestOfOptions {
 	verifierBackend: VerifierBackend;
 	/** Sampled-verifier thinking level; empty uses the verifier's low-cost default. */
 	verifierThinking: string;
+	/** Per-verifier-call wall-clock limit for either backend. */
+	verifierTimeout?: string;
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;

@@ -14,6 +14,7 @@ describe("command arguments", () => {
 			verifierModel: "deepseek/deepseek-v4-flash",
 			verifierBackend: "logprob",
 			verifierThinking: "low",
+			verifierTimeout: "2m",
 			nEvaluations: 1,
 			pivots: 2,
 			apply: false,
@@ -38,6 +39,7 @@ describe("command arguments", () => {
 		expect(parsed.verifierBackend).toBe("sampled");
 		expect(parsed.verifierModel).toBe("provider/test-model");
 		expect(parseArgs(["--verifier-backend", "sampled", "--verifier-thinking", "high", "task"]).verifierThinking).toBe("high");
+		expect(parseArgs(["--verifier-timeout", "10m", "task"]).verifierTimeout).toBe("10m");
 		expect(() => parseArgs(["--verifier-backend", "unknown", "task"])).toThrow("--verifier-backend must be logprob or sampled");
 	});
 
@@ -52,6 +54,7 @@ describe("command arguments", () => {
 	test("rejects another flag where an option value is required", () => {
 		expect(() => parseArgs(["--model", "--apply", "task"])).toThrow("--model requires a value");
 		expect(() => parseArgs(["--max-time", "--apply", "task"])).toThrow("--max-time requires a value");
+		expect(() => parseArgs(["--verifier-timeout", "--apply", "task"])).toThrow("--verifier-timeout requires a value");
 	});
 
 	test("rejects unsafe integer options", () => {
@@ -60,5 +63,6 @@ describe("command arguments", () => {
 
 	test("rejects invalid durations during argument parsing", () => {
 		expect(() => parseArgs(["--max-time", "nonsense", "task"])).toThrow("Invalid max time: nonsense");
+		expect(() => parseArgs(["--verifier-timeout", "nonsense", "task"])).toThrow("Invalid verifier timeout: nonsense");
 	});
 });

@@ -16,7 +16,7 @@
 import { mkdir, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { DEFAULT_CRITERIA } from "../src/args";
+import { DEFAULT_CRITERIA, parseDurationMs } from "../src/args";
 import type { ModelSource, VerifierEndpoint } from "../src/model";
 import { createModelSource, resolveVerifierEndpoint } from "../src/model";
 import { requireCommand, runCommand } from "../src/process";
@@ -47,6 +47,7 @@ Options:
   --verifier-model <model> Verifier model selector (default: deepseek/deepseek-v4-flash)
   --verifier-backend <mode> logprob or sampled (default: logprob)
   --verifier-thinking <level> Sampled-verifier thinking level (default: low)
+  --verifier-timeout <duration> Per-verifier-call limit (default: 2m)
   --evaluations <n>        Logprob repetitions or sampled pairwise rounds (default: 1)
   --pivots <n>             Tournament pivots for the logprob backend (default: 2)
   --max-time <duration>    Per-candidate limit (default: 5m)
@@ -66,6 +67,7 @@ interface BenchOptions {
 	verifierModel: string;
 	verifierBackend: VerifierBackend;
 	verifierThinking: string;
+	verifierTimeout: string;
 	nEvaluations: number;
 	pivots: number;
 	maxTime: string;
@@ -130,6 +132,7 @@ function parseArgs(argv: string[]): BenchOptions {
 		verifierModel: "deepseek/deepseek-v4-flash",
 		verifierBackend: "logprob",
 		verifierThinking: "low",
+		verifierTimeout: "2m",
 		nEvaluations: 1,
 		pivots: 2,
 		maxTime: "5m",
@@ -164,6 +167,10 @@ function parseArgs(argv: string[]): BenchOptions {
 			case "--verifier-thinking":
 				options.verifierThinking = argv[++index] ?? "";
 				if (!options.verifierThinking) throw new Error("--verifier-thinking requires a value");
+				break;
+			case "--verifier-timeout":
+				options.verifierTimeout = argv[++index] ?? "";
+				parseDurationMs(options.verifierTimeout, "verifier timeout");
 				break;
 			case "--evaluations":
 				options.nEvaluations = integer(argv[++index], "--evaluations");
@@ -244,6 +251,7 @@ async function rankPool(
 		nEvaluations: options.nEvaluations,
 		seed: options.seed,
 		cachePath,
+		timeoutMs: parseDurationMs(options.verifierTimeout, "verifier timeout"),
 	};
 	if (options.verifierBackend !== "sampled") {
 		const verifier = await verifyCandidates({
@@ -262,6 +270,7 @@ async function rankPool(
 			candidates: eligible.map(composeSampledVerifierEvidence),
 			model: options.verifierModel,
 			thinking: options.verifierThinking,
+			timeout: options.verifierTimeout,
 			cwd: REPO_ROOT,
 			candidateCwds,
 		});
@@ -376,7 +385,12 @@ async function environment(mode: string, options: BenchOptions) {
 		warmupsDiscarded: 0,
 		verifierPricePerMtok: options.verifierBackend === "logprob" ? VERIFIER_PRICE_PER_MTOK : null,
 		sampledVerifierSettings: options.verifierBackend === "sampled"
-			? { ...SAMPLED_VERIFIER_SETTINGS, thinking: options.verifierThinking }
+			? {
+					...SAMPLED_VERIFIER_SETTINGS,
+					thinking: options.verifierThinking,
+					timeout: options.verifierTimeout,
+					timeoutMs: parseDurationMs(options.verifierTimeout, "verifier timeout"),
+				}
 			: null,
 		oracleLabels: options.reuse ? "rescored against current oracle before ranking" : "scored during generation",
 		label: options.label,
@@ -499,6 +513,7 @@ async function generate(
 			generatorModel: options.generatorModel,
 			verifierModel: options.verifierModel,
 			verifierThinking: options.verifierThinking,
+			verifierTimeout: options.verifierTimeout,
 			verifierBackend: options.verifierBackend,
 			nEvaluations: options.nEvaluations,
 			pivots: options.pivots,

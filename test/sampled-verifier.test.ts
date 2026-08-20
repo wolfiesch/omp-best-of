@@ -173,7 +173,7 @@ const prompt = process.argv.at(-1);
 const cwd = process.argv[process.argv.indexOf("--cwd") + 1];
 const audit = prompt.includes("Audit one candidate independently");
 const toolsIndex = process.argv.indexOf("--tools");
-await appendFile(${JSON.stringify(log)}, JSON.stringify({ cwd, audit, tools: toolsIndex >= 0 ? process.argv[toolsIndex + 1] : "", noTools: process.argv.includes("--no-tools") }) + "\\n");
+await appendFile(${JSON.stringify(log)}, JSON.stringify({ cwd, audit, tools: toolsIndex >= 0 ? process.argv[toolsIndex + 1] : "", noTools: process.argv.includes("--no-tools"), maxTime: process.argv[process.argv.indexOf("--max-time") + 1] }) + "\\n");
 if (audit) {
   const probeCount = prompt.includes("This is the challenge pass") ? 3 : 1;
   for (let index = 0; index < probeCount; index += 1) {
@@ -197,6 +197,7 @@ console.log(JSON.stringify({
 			candidateCwds: [candidateA, candidateB],
 			criteria: { Correctness: "Works" },
 			model: "test/model",
+			timeout: "10m",
 			nEvaluations: 1,
 			seed: 0,
 			cachePath: path.join(root, "cache.json"),
@@ -207,6 +208,7 @@ console.log(JSON.stringify({
 			.trim()
 			.split("\n")
 			.map((line) => JSON.parse(line));
+		expect(calls.every((call) => call.maxTime === "10m")).toBe(true);
 		const audits = calls.filter((call) => call.audit);
 		expect(audits).toHaveLength(4);
 		expect(audits.every((call) => call.tools === "audit_probe" && !call.noTools)).toBe(true);
