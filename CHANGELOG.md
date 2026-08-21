@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Fixed
 
 - Sampled verifier JSON parsing now uses only assistant text parts while retaining thinking and tool parts in transcript evidence, so reasoning containing braces cannot corrupt an otherwise valid judgment.
+- Sampled verifier prompts are streamed to child OMP processes over stdin instead of passed as a single argv value, preventing `E2BIG` during pairwise comparison without changing or truncating candidate evidence.
 
 ### Changed
 
