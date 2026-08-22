@@ -58,6 +58,7 @@
 	},
 	"files": [
 		"src",
+		"skills",
 		"python",
 		"README.md",
 		"LICENSE",

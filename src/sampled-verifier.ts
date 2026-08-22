@@ -276,9 +276,8 @@ async function invokeJudge(
 			"--max-time",
 			timeout,
 			"-p",
-			prompt,
 		],
-		{ cwd, timeoutMs, signal: input.signal },
+		{ cwd, stdin: prompt, timeoutMs, signal: input.signal },
 	);
 	if (result.timedOut) throw new Error("Sampled verifier timed out");
 	if (result.aborted) throw input.signal?.reason ?? new DOMException("Sampled verifier aborted", "AbortError");
