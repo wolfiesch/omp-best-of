@@ -11,6 +11,7 @@ interface AuditExecution {
 	exitCode: number;
 	stdout: string;
 	stderr: string;
+	launcher: string;
 }
 
 async function exists(file: string): Promise<boolean> {
@@ -26,6 +27,22 @@ function boundedDiagnostic(output: string): string {
 		.replace(/\/[^\s"'`]+/g, "<path>")
 		.replace(/\s+/g, " ")
 		.slice(0, MAX_PREFLIGHT_DIAGNOSTIC_CHARS);
+}
+
+async function resolveBunRuntime(): Promise<string> {
+	const requested = process.env.OMP_BEST_OF_BUN_BIN ?? "bun";
+	const found = path.isAbsolute(requested) ? requested : Bun.which(requested, { PATH: process.env.PATH ?? "" });
+	if (!found) {
+		throw new Error("audit_probe sandbox preflight requires a Bun runtime; install bun on PATH or set OMP_BEST_OF_BUN_BIN");
+	}
+	return realpath(found);
+}
+
+function possibleSignal(exitCode: number): string {
+	const signalNumber = exitCode - 128;
+	if (signalNumber < 1) return "";
+	const signalName = Object.entries(os.constants.signals).find(([, value]) => value === signalNumber)?.[0];
+	return ` Possible signal: ${signalName ?? signalNumber}.`;
 }
 
 async function sandboxCommand(cwd: string, scratchDir: string, command: string[]): Promise<{ executable: string; args: string[] }> {
@@ -161,7 +178,7 @@ async function executeSandboxedAudit(cwd: string, command: string[], timeoutMs: 
 			timeout,
 			cancellation,
 		]);
-		return { exitCode, stdout, stderr };
+		return { exitCode, stdout, stderr, launcher: path.basename(sandbox.executable) };
 	} finally {
 		clearTimeout(timer);
 		if (abort) signal?.removeEventListener("abort", abort);
@@ -172,17 +189,20 @@ async function executeSandboxedAudit(cwd: string, command: string[], timeoutMs: 
 }
 
 export async function assertAuditSandboxSupported(cwd: string, signal?: AbortSignal): Promise<void> {
-	const result = await executeSandboxedAudit(
-		path.resolve(cwd),
-		[process.execPath, "-e", 'process.stdout.write("audit-probe-sandbox-ok\\n")'],
-		DEFAULT_TIMEOUT_MS,
-		signal,
-	);
+	const runtime = await resolveBunRuntime();
+	const probeScript = 'process.stdout.write("audit-probe-sandbox-ok\\n")';
+	const result = await executeSandboxedAudit(path.resolve(cwd), [runtime, "-e", probeScript], DEFAULT_TIMEOUT_MS, signal);
 	if (result.exitCode !== 0 || result.stdout !== "audit-probe-sandbox-ok\n") {
-		const diagnostic = boundedDiagnostic(`${result.stderr}\n${result.stdout}`);
-		const details = diagnostic ? ` Diagnostic: ${diagnostic}` : "";
+		const stderr = boundedDiagnostic(result.stderr) || "<empty>";
+		const stdout = boundedDiagnostic(result.stdout) || "<empty>";
 		throw new Error(
-			`audit_probe sandbox preflight failed (exit code ${result.exitCode}). Ensure bubblewrap can create an isolated namespace and the Bun runtime is executable.${details}`,
+			[
+				`audit_probe sandbox preflight failed (exit code ${result.exitCode}).`,
+				`Launcher: ${result.launcher}.`,
+				`Payload: ${JSON.stringify([path.basename(runtime), "-e", probeScript])}.`,
+				`stderr=${stderr}; stdout=${stdout}.`,
+				`Ensure bubblewrap can create an isolated namespace and the Bun runtime is executable.${possibleSignal(result.exitCode)}`,
+			].join(" "),
 		);
 	}
 }

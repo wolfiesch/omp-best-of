@@ -231,9 +231,13 @@ linuxTest("fails sampled sandbox preflight before invoking candidates or the sam
 		const repo = await initializeRepository(temporaryRoot);
 		const git = Bun.which("git");
 		if (!git) throw new Error("git is required for runner behavior tests");
+		const bun = Bun.which("bun");
+		if (!bun) throw new Error("bun is required for runner behavior tests");
 		await mkdir(bin);
 		await Bun.write(path.join(bin, "git"), `#!/bin/sh\nexec ${JSON.stringify(git)} "$@"\n`);
 		await chmod(path.join(bin, "git"), 0o755);
+		await Bun.write(path.join(bin, "bun"), `#!/bin/sh\nexec ${JSON.stringify(bun)} "$@"\n`);
+		await chmod(path.join(bin, "bun"), 0o755);
 		await Bun.write(path.join(bin, "bwrap"), "#!/bin/sh\nexit 1\n");
 		await chmod(path.join(bin, "bwrap"), 0o755);
 		await Bun.write(omp, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(invocations)}\n`);
