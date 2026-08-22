@@ -73,15 +73,19 @@ defaults to `verifierBackend: sampled` so any OMP model can judge; an explicit
 Before calling `best_of`:
 
 1. Resolve every supplied model as described above.
-2. State the resolved candidate count, implementer selector, reviewer selector,
-   backend, and whether the run is inspect-only or apply-enabled.
-3. Check the repository with
-   `git status --porcelain=v1 --untracked-files=all`.
+2. From the checkout containing the requested work, run
+   `git rev-parse --show-toplevel` and retain the returned absolute repository
+   root. Do not assume the OMP session cwd and task checkout are the same.
+3. Run `git status --porcelain=v1 --untracked-files=all` with that exact root as
+   the command cwd.
+4. State the repository root, resolved candidate count, implementer selector,
+   reviewer selector, backend, and whether the run is inspect-only or
+   apply-enabled.
 
-If the tree is dirty, do not call `best_of`, stash, commit, discard, or clean
-anything. Report every status line so the user can identify the blocking paths.
-This preserves the trigger for a fresh request after the user resolves the
-working tree.
+Pass the same absolute repository root as the tool's `cwd`. If the tree is
+dirty, do not call `best_of`, stash, commit, discard, or clean anything. Report
+every status line so the user can identify the blocking paths. This preserves
+the trigger for a fresh request after the user resolves the working tree.
 
 Without the explicit `apply` control, announce that the run is inspect-only.
 Task prose such as “fix”, “implement”, or “update the PR” never implies apply.
@@ -94,6 +98,7 @@ orchestration; never call it again to confirm or retry the result.
 
 Use these fields:
 
+- `cwd`: the absolute repository root verified during preflight
 - `task`: preserved task text
 - `n`: only when supplied
 - resolved implementer fields: only when supplied

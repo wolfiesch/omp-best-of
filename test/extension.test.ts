@@ -99,6 +99,7 @@ test("tool schema accepts arbitrary model selectors and rejects unknown backends
 	const { parameters } = runExtension().tool;
 	expect(
 		parameters.safeParse({
+			cwd: "/tmp/clean-pr-worktree",
 			task: "Add a regression test for the flow",
 			model: "acme-custom/foundry-model-x9",
 			verifierModel: "another-vendor/specialised-judge",
@@ -194,10 +195,17 @@ console.log(JSON.stringify({
 		const updates: ToolResult[] = [];
 		const result = await runExtension().tool.execute(
 			"successful-run",
-			{ task: "Exercise the tool", n: 2, model: "acme/custom-model", thinking: "low", verify: false },
+			{
+				cwd: repo,
+				task: "Exercise the tool",
+				n: 2,
+				model: "acme/custom-model",
+				thinking: "low",
+				verify: false,
+			},
 			undefined,
 			(update) => updates.push(update),
-			toolContext(repo),
+			toolContext(root),
 		);
 		expect(result.isError).toBeUndefined();
 		expect(result.details?.runId).toBeString();

@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import type { BestOfCliOptions } from "./args";
 import { DEFAULT_CRITERIA, HELP, parseArgs, tokenize } from "./args";
@@ -7,6 +8,7 @@ import type { BestOfProgress, BestOfResult } from "./types";
 
 /** `best_of` parameters before they are normalized by the CLI parser. */
 interface BestOfToolParams {
+	cwd?: string;
 	task: string;
 	n?: number;
 	model?: string;
@@ -189,6 +191,7 @@ export default function ompBestOfExtension(pi: ExtensionAPI): void {
 		description:
 			"Run isolated Best-of-N agents on a repository task and rank their patches with an LLM-as-a-Verifier or an OMP sampled judge. Returns the run id, artifact directory, selection, application state, and duration; set apply:true to apply the selected patch to the clean parent checkout.",
 		parameters: z.object({
+			cwd: z.string().optional().describe("Repository path; relative paths resolve from the calling session cwd"),
 			task: z.string().describe("Repository task the isolated candidates must complete"),
 			n: z.number().int().optional().describe("Number of isolated candidates to generate (2-8; default 3)"),
 			model: z.string().optional().describe("Exact OMP model selector for candidates; default inherits the calling session's model"),
@@ -220,7 +223,7 @@ export default function ompBestOfExtension(pi: ExtensionAPI): void {
 			};
 			try {
 				const result = await runWithSharedSession(activeRuns, {
-					cwd: ctx.cwd,
+					cwd: input.cwd ? path.resolve(ctx.cwd, input.cwd) : ctx.cwd,
 					parsed: bestOfToolParamsToCliOptions(input),
 					modelRegistry: ctx.modelRegistry,
 					sessionModel: sessionModelSelector(ctx),

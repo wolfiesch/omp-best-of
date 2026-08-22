@@ -60,6 +60,7 @@ async function assertCleanRepo(cwd: string): Promise<{ root: string; head: strin
 		throw new Error(
 			[
 				"OMP Best Of requires a clean working tree so the selected patch cannot overwrite existing work.",
+				`Repository: ${root}`,
 				"Dirty paths:",
 				...dirtyLines.map((line) => `  ${line}`),
 			].join("\n"),

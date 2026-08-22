@@ -106,9 +106,9 @@ test("reports dirty parent paths before creating candidates", async () => {
 		const repo = await initializeRepository(temporaryRoot);
 		await Bun.write(path.join(repo, "tracked.txt"), "modified user work\n");
 		await Bun.write(path.join(repo, "untracked.txt"), "untracked user work\n");
-		await expect(runBestOf({ ...options(repo), apply: false, verify: false })).rejects.toThrow(
-			/Dirty paths:\n {3}M tracked\.txt\n {2}\?\? untracked\.txt/,
-		);
+		const failure = runBestOf({ ...options(repo), apply: false, verify: false });
+		await expect(failure).rejects.toThrow(`Repository: ${repo}`);
+		await expect(failure).rejects.toThrow(/Dirty paths:\n {3}M tracked\.txt\n {2}\?\? untracked\.txt/);
 		expect((await run(["git", "worktree", "list", "--porcelain"], repo)).match(/^worktree /gm)).toHaveLength(1);
 	} finally {
 		await rm(temporaryRoot, { recursive: true, force: true });
