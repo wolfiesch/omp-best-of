@@ -56,7 +56,14 @@ async function assertCleanRepo(cwd: string): Promise<{ root: string; head: strin
 	const root = (await requireCommand(["git", "rev-parse", "--show-toplevel"], cwd)).trim();
 	const status = await requireCommand(["git", "status", "--porcelain=v1", "--untracked-files=all"], root);
 	if (status.trim()) {
-		throw new Error("OMP Best Of requires a clean working tree so the selected patch cannot overwrite existing work.");
+		const dirtyLines = status.trimEnd().split("\n");
+		throw new Error(
+			[
+				"OMP Best Of requires a clean working tree so the selected patch cannot overwrite existing work.",
+				"Dirty paths:",
+				...dirtyLines.map((line) => `  ${line}`),
+			].join("\n"),
+		);
 	}
 	const head = (await requireCommand(["git", "rev-parse", "HEAD"], root)).trim();
 	return { root, head };

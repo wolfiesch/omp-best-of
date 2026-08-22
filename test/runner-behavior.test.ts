@@ -100,12 +100,15 @@ test("validates programmatic options before repository or verifier preflight", a
 		"Verifier evaluations must be a positive safe integer",
 	);
 });
-test("refuses a dirty parent before creating candidates", async () => {
+test("reports dirty parent paths before creating candidates", async () => {
 	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-dirty-test-"));
 	try {
 		const repo = await initializeRepository(temporaryRoot);
-		await Bun.write(path.join(repo, "untracked.txt"), "user work\n");
-		await expect(runBestOf({ ...options(repo), apply: false, verify: false })).rejects.toThrow("requires a clean working tree");
+		await Bun.write(path.join(repo, "tracked.txt"), "modified user work\n");
+		await Bun.write(path.join(repo, "untracked.txt"), "untracked user work\n");
+		await expect(runBestOf({ ...options(repo), apply: false, verify: false })).rejects.toThrow(
+			/Dirty paths:\n {3}M tracked\.txt\n {2}\?\? untracked\.txt/,
+		);
 		expect((await run(["git", "worktree", "list", "--porcelain"], repo)).match(/^worktree /gm)).toHaveLength(1);
 	} finally {
 		await rm(temporaryRoot, { recursive: true, force: true });

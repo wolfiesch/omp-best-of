@@ -45,6 +45,9 @@ try {
 	}
 	const skills = loadedSkills.skills.filter((skill) => skill.name === "bestof");
 	if (skills.length !== 1) throw new Error(`Packed skill loader found ${skills.length} bestof skills`);
+	const skillSource = await Bun.file(path.join(installedPackage, "skills", "bestof", "SKILL.md")).text();
+	const fenceCount = skillSource.match(/^```/gm)?.length ?? 0;
+	if (fenceCount % 2 !== 0) throw new Error(`Packed bestof skill has ${fenceCount} unbalanced code fences`);
 	const skillPrompt = await buildSkillPromptMessage(skills[0], "smoke");
 	if (!skillPrompt.message.trim()) throw new Error("Packed bestof skill produced an empty prompt");
 	// Dynamic import is the behavior under test: load the packed install, not this source tree.

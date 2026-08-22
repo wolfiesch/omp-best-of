@@ -15,6 +15,8 @@ Remove the trigger token, parse controls, and preserve the remaining task verbat
 
 ```text
 bestof [N] [implementer MODEL] [reviewer MODEL] [sampled|logprob] [apply] [no-verify] [--] TASK
+
+MODEL = exact role key | exact provider/model[:thinking] | exact quoted catalog name
 ```
 
 Aliases:
@@ -28,21 +30,67 @@ Aliases:
 - `--` ends controls. Everything after it is task text, including text beginning with `-`.
 
 Without `--`, consume only the recognized controls above. The first unrecognized token and everything after it are the task. Conflicting repeated controls are an error; do not guess.
+Natural wording may supply controls when it is exact and unambiguous: for
+example, “5 sessions of FAST_ROLE with Exact Reviewer Name as reviewer”
+supplies `n=5`, implementer `FAST_ROLE`, and reviewer `Exact Reviewer Name`.
+Prefer `--` to separate controls from task prose. Never consume a possible task
+phrase as a control when its meaning is ambiguous.
 
 ## Model resolution
 
-Each `MODEL` is either:
+Resolve each supplied `MODEL` against live OMP configuration in this order:
 
-1. An exact OMP `provider/model` selector, optionally carrying its configured thinking suffix.
-2. An exact key from the caller's `modelRoles` configuration, matched case-insensitively.
+1. An exact OMP `provider/model` selector, optionally carrying a supported
+   thinking suffix.
+2. An exact key from the caller's `modelRoles`, matched case-insensitively.
+3. An exact model `name` from `omp models --json`, matched case-insensitively.
+   Catalog names may contain spaces; consume the longest exact name. The match
+   must identify one catalog entry.
 
-For a role name, read the live configuration with `omp config get modelRoles --json`. Resolve its value to an exact selector and optional thinking level. Validate requested selectors and thinking levels against `omp models --json`. Never maintain a model list, vendor aliases, fallback route, or fuzzy match in this skill. Missing, ambiguous, or unsupported values stop before launch and report the unresolved value plus the available role keys.
+Read roles with `omp config get modelRoles --json` and the catalog with
+`omp models --json`. Validate selectors and thinking levels against the live
+catalog. A catalog-name match resolves to its exact selector and leaves
+thinking unset unless the user supplied a thinking level. Do not choose a role
+merely because it points at that selector: two roles may intentionally select
+different thinking levels.
 
-If the implementer is omitted, omit both `model` and `thinking` so candidates inherit the calling session. If the reviewer is omitted, omit verifier model, thinking, and backend overrides and use the plugin defaults. A supplied implementer sets `model` and, when present, `thinking`. A supplied reviewer sets `verifierModel` and, when present, `verifierThinking`. An explicit reviewer defaults to `verifierBackend: sampled` so any OMP model can judge; an explicit `sampled` or `logprob` control overrides that choice.
+This is exact matching, not fuzzy matching or a maintained alias list. If
+several catalog entries share the exact requested name, ask the user to choose
+among those exact selectors. If nothing matches exactly, stop before launch and
+report the unresolved value, available role keys, and the accepted selector /
+catalog-name forms.
+
+If the implementer is omitted, omit both `model` and `thinking` so candidates
+inherit the calling session. If the reviewer is omitted, omit verifier model,
+thinking, and backend overrides and use the plugin defaults. A supplied
+implementer sets `model` and, when present, `thinking`. A supplied reviewer sets
+`verifierModel` and, when present, `verifierThinking`. An explicit reviewer
+defaults to `verifierBackend: sampled` so any OMP model can judge; an explicit
+`sampled` or `logprob` control overrides that choice.
+
+## Preflight
+
+Before calling `best_of`:
+
+1. Resolve every supplied model as described above.
+2. State the resolved candidate count, implementer selector, reviewer selector,
+   backend, and whether the run is inspect-only or apply-enabled.
+3. Check the repository with
+   `git status --porcelain=v1 --untracked-files=all`.
+
+If the tree is dirty, do not call `best_of`, stash, commit, discard, or clean
+anything. Report every status line so the user can identify the blocking paths.
+This preserves the trigger for a fresh request after the user resolves the
+working tree.
+
+Without the explicit `apply` control, announce that the run is inspect-only.
+Task prose such as “fix”, “implement”, or “update the PR” never implies apply.
 
 ## Tool call
 
-**One-call invariant:** make exactly one `best_of` call for each trigger. Any success, error, or abort ends the workflow; never call again to confirm the result.
+**One-call invariant:** make at most one `best_of` call for each trigger, and
+only after preflight passes. Once called, any success, error, or abort ends the
+orchestration; never call it again to confirm or retry the result.
 
 Use these fields:
 
@@ -54,14 +102,23 @@ Use these fields:
 - `apply: true`: only for explicit `apply`
 - `verify: false`: only for explicit `no-verify`
 
-Do not send false defaults for omitted controls. Do not launch asynchronously, hand-pick a candidate, apply a patch manually, or continue after the tool returns. A preflight error is authoritative: report it and stop without retrying or asking to retry.
+Do not send false defaults for omitted controls. Do not launch asynchronously,
+hand-pick a candidate, apply a patch manually, or continue the orchestration
+after the tool returns. A tool preflight error is authoritative and forbids a
+second `best_of` call. Read-only inspection needed to explain the error remains
+allowed; report concrete paths or configuration values when available. Never
+mutate the repository as recovery.
 
-Afterward report the selected candidate, whether a patch was applied, and the artifact directory. Treat the tool result as authoritative; large transcripts and patches remain in its artifacts.
+Afterward report the selected candidate, whether a patch was applied, and the
+artifact directory. On failure, report the exact blocking condition and any
+read-only diagnostic evidence. Treat the tool result as authoritative; large
+transcripts and patches remain in its artifacts.
 
 ## Examples
 
 ```text
 bestof implementer FAST_ROLE reviewer JUDGE_ROLE -- fix the parser race and add a regression test
+bestof 5 implementer FAST_ROLE reviewer "Exact Reviewer Name" -- review the required PR fix
 bestof 4 model provider/coder:high judge provider/reviewer:max apply -- implement the requested API
 bestof no-verify -- generate alternatives without selecting or applying one
 ```
