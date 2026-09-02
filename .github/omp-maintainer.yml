@@ -1,0 +1,78 @@
+# Strict policy v1 for this repository.
+version: 1
+
+issues:
+  enabled: true
+  auto_implement:
+    - bug
+    - documentation
+  require_authorization:
+    - enhancement
+    - proposal
+    - feature
+  authorizers:
+    roles:
+      - OWNER
+    users: []
+
+pull_requests:
+  review_enabled: true
+  fix_comments_enabled: false
+  allowed_reviewer_bots: []
+  steer_roles:
+    - OWNER
+    - MEMBER
+    - COLLABORATOR
+
+labels:
+  allowed_primaries:
+    - bug
+    - enhancement
+    - question
+    - proposal
+    - documentation
+    - wontfix
+    - invalid
+    - duplicate
+  allowed_priorities:
+    - prio:p0
+    - prio:p1
+    - prio:p2
+    - prio:p3
+  allowed_functional:
+    - agent
+    - tool
+    - tui
+    - cli
+    - prompting
+    - sdk
+    - auth
+    - setup
+    - ux
+    - providers
+  allowed_platforms:
+    - platform:linux
+    - platform:macos
+    - platform:windows
+    - platform:wsl
+  allowed_provider_prefix: "provider:"
+  system_labels:
+    - triaged
+    - needs-info
+
+branches:
+  allowed_prefixes:
+    - "farm/"
+  review_prefix: "review/pr-"
+  prohibit_default_branch_push: true
+  prohibit_tag_push: true
+
+ci_repair:
+  release_sentinel:
+    enabled: false
+    max_rounds: 5
+    commit_prefix: "chore: bump version to "
+    allowed_tag_pattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
+
+merge:
+  allow_merge: false
