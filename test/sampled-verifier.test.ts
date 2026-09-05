@@ -22,7 +22,7 @@ async function createProgressMock(root: string): Promise<string> {
 	await Bun.write(
 		omp,
 		`#!/usr/bin/env bun
-const prompt = process.argv.at(-1) ?? "";
+const prompt = await Bun.stdin.text();
 const audit = prompt.includes("Audit one candidate independently");
 const response = audit
 	? JSON.stringify({ probabilityPass: 90, findings: [], summary: "checked" })
@@ -170,7 +170,7 @@ test("audits candidate workspaces with read-only execution tools", async () => {
 			omp,
 			`#!/usr/bin/env bun
 import { appendFile } from "node:fs/promises";
-const prompt = process.argv.at(-1);
+const prompt = await Bun.stdin.text();
 const cwd = process.argv[process.argv.indexOf("--cwd") + 1];
 const audit = prompt.includes("Audit one candidate independently");
 const toolsIndex = process.argv.indexOf("--tools");
@@ -253,6 +253,62 @@ console.log(JSON.stringify({
 	}
 });
 
+test("streams oversized pairwise evidence over stdin without changing bytes", async () => {
+	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-large-prompt-test-"));
+	const omp = path.join(root, "mock-omp.ts");
+	const log = path.join(root, "calls.jsonl");
+	const pairPrompt = path.join(root, "pair-prompt.txt");
+	const candidates = ["A".repeat(70_000), "B".repeat(70_000)];
+	const input = {
+		problem: "Choose",
+		candidates,
+		criteria: { Correctness: "Works" },
+		model: "test/model",
+		nEvaluations: 1,
+		seed: 0,
+		cachePath: path.join(root, "cache.json"),
+		cwd: root,
+		ompBin: omp,
+	};
+	try {
+		await Bun.write(
+			omp,
+			`#!/usr/bin/env bun
+import { appendFile } from "node:fs/promises";
+const prompt = await Bun.stdin.text();
+const audit = prompt.includes("Audit one candidate independently");
+if (!audit) await Bun.write(${JSON.stringify(pairPrompt)}, prompt);
+await appendFile(${JSON.stringify(log)}, JSON.stringify({ lastArg: process.argv.at(-1), promptBytes: Buffer.byteLength(prompt), audit }) + "\\n");
+const text = audit
+  ? JSON.stringify({ probabilityPass: 90, findings: [], summary: "checked" })
+  : JSON.stringify({ probabilityA: 50, reason: "tie" });
+console.log(JSON.stringify({
+  type: "message_end",
+  message: { role: "assistant", content: [{ type: "text", text }], usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoningTokens: 0, cost: { total: 0 } } },
+}));
+`,
+		);
+		await chmod(omp, 0o755);
+		await verifyCandidatesSampled(input);
+		const calls = (await Bun.file(log).text())
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line));
+		const audit = combineCandidateAudits([
+			{ probabilityPass: 90, findings: [], summary: "checked" },
+			{ probabilityPass: 90, findings: [], summary: "checked" },
+		]);
+		const expectedPairPrompt = buildPairwisePrompt({ ...input, audits: [audit, audit] }, buildPairSchedule(2, 1, 0)[0]);
+		expect(calls).toHaveLength(5);
+		expect(calls.filter((call) => !call.audit)).toHaveLength(1);
+		expect(calls.every((call) => call.lastArg === "-p")).toBe(true);
+		expect(Math.max(...calls.map((call) => call.promptBytes))).toBeGreaterThan(128 * 1024);
+		expect(await Bun.file(pairPrompt).text()).toBe(expectedPairPrompt);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("rejects workspace audits that skip required probes", async () => {
 	const root = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-audit-probe-test-"));
 	const candidateA = path.join(root, "candidate-a");
@@ -263,7 +319,7 @@ test("rejects workspace audits that skip required probes", async () => {
 		await Bun.write(
 			omp,
 			`#!/usr/bin/env bun
-const prompt = process.argv.at(-1);
+const prompt = await Bun.stdin.text();
 const audit = prompt.includes("Audit one candidate independently");
 const text = audit
   ? JSON.stringify({ probabilityPass: 90, findings: [], summary: "unchecked" })
@@ -489,7 +545,7 @@ async function createRetryTraceMock(root: string, statePath: string, logPath: st
 		omp,
 		`#!/usr/bin/env bun
 import { appendFile, readFile } from "node:fs/promises";
-const prompt = process.argv.at(-1) ?? "";
+const prompt = await Bun.stdin.text();
 const audit = prompt.includes("Audit one candidate independently");
 const challengePassDirective = "This is the challenge pass. Before returning, execute at least three focused contract-derived probes";
 const state = JSON.parse(await readFile(${JSON.stringify(statePath)}, "utf8"));
