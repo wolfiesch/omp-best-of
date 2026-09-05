@@ -110,6 +110,24 @@ omp plugin doctor omp-best-of
 
 ## Usage
 
+### Agent-invoked skill and tool
+
+The installed plugin registers a discoverable `best_of` tool and a `bestof` skill. Use a
+standalone `bestof` token to let the current agent resolve configured model roles and call
+the tool:
+
+```text
+bestof implementer FAST_ROLE reviewer JUDGE_ROLE -- fix the parser race and add a regression test
+bestof 4 model provider/coder:high judge provider/reviewer:max apply -- implement the requested API
+```
+
+An explicit reviewer uses the sampled OMP judge unless `logprob` is requested, so any model
+available through OMP can fill that role. Candidate and reviewer selectors remain independent.
+The skill never applies a patch unless `apply` is present. Agents may also call `best_of`
+directly with the same options exposed below.
+
+### Slash command and CLI
+
 Inside a session, selection only, leaving the checkout untouched:
 
 ```text

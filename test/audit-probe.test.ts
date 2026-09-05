@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import * as zod from "@oh-my-pi/omptype/zod";
@@ -76,6 +76,31 @@ sandboxTest(
 				expect(result.isError).toBe(false);
 				expect(result.details.exitCode).toBe(0);
 			});
+		});
+	},
+	15_000,
+);
+
+sandboxTest(
+	"preflight reports the configured runtime, empty streams, and terminating signal",
+	async () => {
+		await withWorkspace(async (cwd) => {
+			const runtime = path.join(cwd, "fake-bun");
+			await writeFile(runtime, "#!/bin/sh\nexit 129\n");
+			await chmod(runtime, 0o755);
+			const previousRuntime = process.env.OMP_BEST_OF_BUN_BIN;
+			process.env.OMP_BEST_OF_BUN_BIN = runtime;
+			try {
+				await expectScratchDirectoriesRemoved(async () => {
+					const failure = assertAuditSandboxSupported(cwd);
+					await expect(failure).rejects.toThrow('Payload: ["fake-bun","-e"');
+					await expect(failure).rejects.toThrow("stderr=<empty>; stdout=<empty>.");
+					await expect(failure).rejects.toThrow("Possible signal: SIGHUP.");
+				});
+			} finally {
+				if (previousRuntime === undefined) delete process.env.OMP_BEST_OF_BUN_BIN;
+				else process.env.OMP_BEST_OF_BUN_BIN = previousRuntime;
+			}
 		});
 	},
 	15_000,

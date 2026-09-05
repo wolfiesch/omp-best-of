@@ -100,12 +100,15 @@ test("validates programmatic options before repository or verifier preflight", a
 		"Verifier evaluations must be a positive safe integer",
 	);
 });
-test("refuses a dirty parent before creating candidates", async () => {
+test("reports dirty parent paths before creating candidates", async () => {
 	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-dirty-test-"));
 	try {
 		const repo = await initializeRepository(temporaryRoot);
-		await Bun.write(path.join(repo, "untracked.txt"), "user work\n");
-		await expect(runBestOf({ ...options(repo), apply: false, verify: false })).rejects.toThrow("requires a clean working tree");
+		await Bun.write(path.join(repo, "tracked.txt"), "modified user work\n");
+		await Bun.write(path.join(repo, "untracked.txt"), "untracked user work\n");
+		const failure = runBestOf({ ...options(repo), apply: false, verify: false });
+		await expect(failure).rejects.toThrow(`Repository: ${repo}`);
+		await expect(failure).rejects.toThrow(/Dirty paths:\n {3}M tracked\.txt\n {2}\?\? untracked\.txt/);
 		expect((await run(["git", "worktree", "list", "--porcelain"], repo)).match(/^worktree /gm)).toHaveLength(1);
 	} finally {
 		await rm(temporaryRoot, { recursive: true, force: true });
@@ -228,9 +231,13 @@ linuxTest("fails sampled sandbox preflight before invoking candidates or the sam
 		const repo = await initializeRepository(temporaryRoot);
 		const git = Bun.which("git");
 		if (!git) throw new Error("git is required for runner behavior tests");
+		const bun = Bun.which("bun");
+		if (!bun) throw new Error("bun is required for runner behavior tests");
 		await mkdir(bin);
 		await Bun.write(path.join(bin, "git"), `#!/bin/sh\nexec ${JSON.stringify(git)} "$@"\n`);
 		await chmod(path.join(bin, "git"), 0o755);
+		await Bun.write(path.join(bin, "bun"), `#!/bin/sh\nexec ${JSON.stringify(bun)} "$@"\n`);
+		await chmod(path.join(bin, "bun"), 0o755);
 		await Bun.write(path.join(bin, "bwrap"), "#!/bin/sh\nexit 1\n");
 		await chmod(path.join(bin, "bwrap"), 0o755);
 		await Bun.write(omp, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(invocations)}\n`);
