@@ -40,7 +40,7 @@
 		"smoke:package": "bun scripts/smoke-package.ts"
 	},
 	"peerDependencies": {
-		"@oh-my-pi/pi-coding-agent": "^17"
+		"@oh-my-pi/pi-coding-agent": ">=17"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.11",
