@@ -14,6 +14,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Fixed
 
 - Sampled verifier JSON parsing now uses only assistant text parts while retaining thinking and tool parts in transcript evidence, so reasoning containing braces cannot corrupt an otherwise valid judgment.
+- Extension loading and recursive-copy fallback support both OMP 17's `parseIsolationMode` API and OMP 18's renamed `parseIsolationBackend` API.
 
 ### Changed
 

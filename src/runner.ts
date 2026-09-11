@@ -1,14 +1,7 @@
 import os from "node:os";
 import path from "node:path";
-import {
-	captureBaseline,
-	captureDeltaPatch,
-	cleanupIsolation,
-	ensureIsolation,
-	type IsolationHandle,
-	parseIsolationMode,
-	type WorktreeBaseline,
-} from "@oh-my-pi/pi-coding-agent/task/worktree";
+import type { IsolationHandle, WorktreeBaseline } from "@oh-my-pi/pi-coding-agent/task/worktree";
+import * as worktree from "@oh-my-pi/pi-coding-agent/task/worktree";
 import { parseDurationMs } from "./args";
 import { ensurePrivateDirectory, secureExistingFile, writePrivateFile } from "./artifacts";
 import { assertAuditSandboxSupported } from "./audit-probe-extension";
@@ -21,6 +14,21 @@ import { assertScoringSupported, verifyCandidates } from "./verifier";
 import { prepareSharedSampledVerifierCache, type SharedSampledVerifierCache } from "./verifier-cache";
 
 const DEFAULT_AGENT_PROMPT = `Work independently on the task below. Modify the repository directly, run focused validation, and finish only when the requested behavior works. Do not commit changes. Preserve unrelated user work.\n\n`;
+type IsolationBackend = Parameters<typeof worktree.ensureIsolation>[2];
+type IsolationBackendParser = (backend: "rcopy") => IsolationBackend;
+
+const isolationApi = worktree as unknown as {
+	parseIsolationBackend?: IsolationBackendParser;
+	parseIsolationMode?: IsolationBackendParser;
+};
+
+function recursiveCopyBackend(): IsolationBackend {
+	const parseBackend = isolationApi.parseIsolationBackend ?? isolationApi.parseIsolationMode;
+	if (!parseBackend) {
+		throw new Error("Installed Oh My Pi version does not expose a supported isolation backend parser.");
+	}
+	return parseBackend("rcopy");
+}
 
 function emit(options: BestOfOptions, progress: BestOfProgress): void {
 	options.onProgress?.(progress);
@@ -65,15 +73,15 @@ async function assertCleanRepo(cwd: string): Promise<{ root: string; head: strin
 async function createCandidateIsolation(root: string, id: string): Promise<IsolationHandle> {
 	let isolation: IsolationHandle | undefined;
 	try {
-		isolation = await ensureIsolation(root, id);
+		isolation = await worktree.ensureIsolation(root, id);
 		await requireCommand(["git", "status", "--porcelain=v1", "--untracked-files=all"], isolation.mergedDir);
 		return isolation;
 	} catch {
-		if (isolation) await cleanupIsolation(isolation);
+		if (isolation) await worktree.cleanupIsolation(isolation);
 		// Native backends can exist but be unusable in a restricted container, for example
 		// when fuse-overlayfs is installed without mount permission. The copy backend does
 		// not need those privileges and preserves the same candidate-isolation contract.
-		return ensureIsolation(root, id, parseIsolationMode("rcopy"));
+		return worktree.ensureIsolation(root, id, recursiveCopyBackend());
 	}
 }
 
@@ -128,7 +136,7 @@ async function runCandidate(
 	let patch = "";
 	let patchError = "";
 	try {
-		patch = (await captureDeltaPatch(workspace, baseline)).rootPatch;
+		patch = (await worktree.captureDeltaPatch(workspace, baseline)).rootPatch;
 	} catch (error) {
 		patchError = error instanceof Error ? error.message : String(error);
 	}
@@ -260,7 +268,7 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 		emit(options, { phase: "preparing", completedCandidates: 0, totalCandidates: options.n, message: "Probing sampled verifier" });
 		sampledPreflightUsage = await assertSampledVerifierSupported(options.verifierModel, root, options.signal, verifierTimeout);
 	}
-	const baseline = await captureBaseline(root);
+	const baseline = await worktree.captureBaseline(root);
 	const isolations: IsolationHandle[] = [];
 
 	try {
@@ -450,6 +458,6 @@ export async function runBestOf(options: BestOfOptions): Promise<BestOfResult> {
 			totalCandidates: options.n,
 			message: "Removing isolated candidates",
 		});
-		await Promise.all(isolations.map(cleanupIsolation));
+		await Promise.all(isolations.map(worktree.cleanupIsolation));
 	}
 }
