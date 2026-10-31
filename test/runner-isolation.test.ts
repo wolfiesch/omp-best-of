@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { access, chmod, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { runBestOf } from "../src/runner";
+import { parseIsolationBackend } from "@oh-my-pi/pi-coding-agent/task/worktree";
+import { parseRecursiveCopyBackend, runBestOf } from "../src/runner";
 
 async function run(args: string[], cwd: string): Promise<string> {
 	const process = Bun.spawn(args, { cwd, stdout: "pipe", stderr: "pipe" });
@@ -14,6 +15,13 @@ async function run(args: string[], cwd: string): Promise<string> {
 	if (exitCode !== 0) throw new Error(`${args.join(" ")} failed (${exitCode}): ${stderr}`);
 	return stdout;
 }
+test("supports the OMP 17 and 18 isolation parser exports", () => {
+	const backend = parseIsolationBackend("rcopy");
+	if (backend === undefined) throw new Error("OMP 18 did not resolve the recursive-copy backend");
+
+	expect(parseRecursiveCopyBackend({ parseIsolationBackend })).toBe(backend);
+	expect(parseRecursiveCopyBackend({ parseIsolationMode: () => backend })).toBe(backend);
+});
 
 test("runs candidates in OMP isolation and cleans every workspace", async () => {
 	const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "omp-best-of-isolation-test-"));
