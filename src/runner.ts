@@ -1,12 +1,12 @@
 import os from "node:os";
 import path from "node:path";
+import * as worktree from "@oh-my-pi/pi-coding-agent/task/worktree";
 import {
 	captureBaseline,
 	captureDeltaPatch,
 	cleanupIsolation,
 	ensureIsolation,
 	type IsolationHandle,
-	parseIsolationMode,
 	type WorktreeBaseline,
 } from "@oh-my-pi/pi-coding-agent/task/worktree";
 import { parseDurationMs } from "./args";
@@ -21,6 +21,19 @@ import { assertScoringSupported, verifyCandidates } from "./verifier";
 import { prepareSharedSampledVerifierCache, type SharedSampledVerifierCache } from "./verifier-cache";
 
 const DEFAULT_AGENT_PROMPT = `Work independently on the task below. Modify the repository directly, run focused validation, and finish only when the requested behavior works. Do not commit changes. Preserve unrelated user work.\n\n`;
+type IsolationBackend = NonNullable<Parameters<typeof ensureIsolation>[2]>;
+type IsolationParser = (backend: "rcopy") => IsolationBackend | undefined;
+
+export function parseRecursiveCopyBackend(api: {
+	parseIsolationBackend?: IsolationParser;
+	parseIsolationMode?: IsolationParser;
+}): IsolationBackend {
+	const parse = api.parseIsolationBackend ?? api.parseIsolationMode;
+	if (!parse) throw new Error("OMP does not expose an isolation backend parser");
+	const backend = parse("rcopy");
+	if (backend === undefined) throw new Error("OMP does not support the recursive-copy isolation backend");
+	return backend;
+}
 
 function emit(options: BestOfOptions, progress: BestOfProgress): void {
 	options.onProgress?.(progress);
@@ -73,7 +86,7 @@ async function createCandidateIsolation(root: string, id: string): Promise<Isola
 		// Native backends can exist but be unusable in a restricted container, for example
 		// when fuse-overlayfs is installed without mount permission. The copy backend does
 		// not need those privileges and preserves the same candidate-isolation contract.
-		return ensureIsolation(root, id, parseIsolationMode("rcopy"));
+		return ensureIsolation(root, id, parseRecursiveCopyBackend(worktree));
 	}
 }
 
